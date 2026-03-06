@@ -1,0 +1,219 @@
+import { HttpError } from '../http-error.js';
+import { createSecretMasker, type SecretMasker } from '../secrets.js';
+
+export type InternalIntegrationBackend = 'bifrost';
+
+export interface GovernanceAssociation {
+  envUid: string;
+  systemEnvId: string;
+}
+
+export interface InternalIntegrationAdapterOptions {
+  accessToken: string;
+  backend: string;
+  fetchImpl?: typeof fetch;
+  secretMasker?: SecretMasker;
+  teamId: string;
+  workerBaseUrl?: string;
+}
+
+export interface InternalIntegrationAdapter {
+  assignWorkspaceToGovernanceGroup(
+    workspaceId: string,
+    domain: string,
+    mappingJson: string
+  ): Promise<void>;
+  associateSystemEnvironments(
+    workspaceId: string,
+    associations: GovernanceAssociation[]
+  ): Promise<void>;
+  connectWorkspaceToRepository(
+    workspaceId: string,
+    repoUrl: string
+  ): Promise<void>;
+}
+
+class BifrostInternalIntegrationAdapter implements InternalIntegrationAdapter {
+  private readonly accessToken: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly secretMasker: SecretMasker;
+  private readonly teamId: string;
+  private readonly workerBaseUrl: string;
+
+  constructor(options: InternalIntegrationAdapterOptions) {
+    this.accessToken = String(options.accessToken || '').trim();
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.secretMasker =
+      options.secretMasker ?? createSecretMasker([this.accessToken]);
+    this.teamId = String(options.teamId || '').trim();
+    this.workerBaseUrl = String(
+      options.workerBaseUrl ||
+        'https://catalog-admin.postman-account2009.workers.dev'
+    ).replace(/\/+$/, '');
+  }
+
+  async assignWorkspaceToGovernanceGroup(
+    workspaceId: string,
+    domain: string,
+    mappingJson: string
+  ): Promise<void> {
+    let mapping: Record<string, string>;
+    try {
+      mapping = JSON.parse(mappingJson || '{}');
+    } catch {
+      return;
+    }
+
+    const groupName = String(mapping[domain] || '').trim();
+    if (!groupName) {
+      return;
+    }
+
+    const listResponse = await this.fetchImpl(
+      'https://gateway.postman.com/configure/workspace-groups',
+      {
+        headers: {
+          'x-access-token': this.accessToken
+        }
+      }
+    );
+
+    if (!listResponse.ok) {
+      throw await HttpError.fromResponse(listResponse, {
+        method: 'GET',
+        requestHeaders: {
+          'x-access-token': this.accessToken
+        },
+        secretValues: [this.accessToken],
+        url: 'https://gateway.postman.com/configure/workspace-groups'
+      });
+    }
+
+    const groups = (await listResponse.json()) as {
+      data?: Array<{ id: string; name: string }>;
+    };
+    const group = groups.data?.find((entry) => entry.name === groupName);
+    if (!group?.id) {
+      return;
+    }
+
+    const patchResponse = await this.fetchImpl(
+      `https://gateway.postman.com/configure/workspace-groups/${group.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-access-token': this.accessToken
+        },
+        body: JSON.stringify({
+          workspaces: [workspaceId]
+        })
+      }
+    );
+
+    if (!patchResponse.ok) {
+      throw await HttpError.fromResponse(patchResponse, {
+        method: 'PATCH',
+        requestHeaders: {
+          'Content-Type': 'application/json',
+          'x-access-token': this.accessToken
+        },
+        secretValues: [this.accessToken],
+        url: `https://gateway.postman.com/configure/workspace-groups/${group.id}`
+      });
+    }
+  }
+
+  async associateSystemEnvironments(
+    workspaceId: string,
+    associations: GovernanceAssociation[]
+  ): Promise<void> {
+    if (associations.length === 0) {
+      return;
+    }
+
+    const response = await this.fetchImpl(
+      `${this.workerBaseUrl}/api/internal/system-envs/associate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          associations: associations.map((entry) => ({
+            env_uid: entry.envUid,
+            system_env_id: entry.systemEnvId
+          }))
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw await HttpError.fromResponse(response, {
+        method: 'POST',
+        requestHeaders: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        secretValues: [this.accessToken],
+        url: `${this.workerBaseUrl}/api/internal/system-envs/associate`
+      });
+    }
+  }
+
+  async connectWorkspaceToRepository(
+    workspaceId: string,
+    repoUrl: string
+  ): Promise<void> {
+    const url = 'https://bifrost-premium-https-v4.gw.postman.com/ws/proxy';
+    const payload = {
+      service: 'workspaces',
+      method: 'POST',
+      path: `/workspaces/${workspaceId}/filesystem`,
+      body: {
+        path: '/',
+        repo: repoUrl,
+        versionControl: true
+      }
+    };
+
+    const response = await this.fetchImpl(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-access-token': this.accessToken,
+        'x-entity-team-id': this.teamId
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw await HttpError.fromResponse(response, {
+        method: 'POST',
+        requestHeaders: {
+          'Content-Type': 'application/json',
+          'x-access-token': this.accessToken,
+          'x-entity-team-id': this.teamId
+        },
+        secretValues: [this.accessToken],
+        url
+      });
+    }
+  }
+}
+
+export function createInternalIntegrationAdapter(
+  options: InternalIntegrationAdapterOptions
+): InternalIntegrationAdapter {
+  if (options.backend !== 'bifrost') {
+    const masker =
+      options.secretMasker ?? createSecretMasker([options.accessToken]);
+    throw new Error(
+      masker(`Unsupported integration backend: ${String(options.backend || '')}`)
+    );
+  }
+
+  return new BifrostInternalIntegrationAdapter(options);
+}
