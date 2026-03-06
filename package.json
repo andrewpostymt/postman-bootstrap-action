@@ -1,0 +1,22 @@
+{
+  "name": "postman-bootstrap-action",
+  "version": "0.1.0-beta.0",
+  "description": "Public beta scaffold for the Postman bootstrap GitHub Action.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "github-action",
+    "postman"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18",
+    "yaml": "^2.8.2"
+  }
+}

@@ -1,0 +1,75 @@
+name: postman-bootstrap-action
+description: Public beta action contract for Postman workspace, spec, and collection bootstrap.
+inputs:
+  project-name:
+    description: Service project name
+    required: true
+  domain:
+    description: Business domain for the service
+    required: false
+  domain-code:
+    description: Workspace naming prefix
+    required: false
+  requester-email:
+    description: Requester email for audit context
+    required: false
+  workspace-admin-user-ids:
+    description: Comma-separated workspace admin user ids
+    required: false
+  spec-url:
+    description: URL to the OpenAPI document to bootstrap
+    required: true
+  environments-json:
+    description: JSON array of environment slugs to preserve in bootstrap outputs
+    required: false
+    default: '["prod"]'
+  system-env-map-json:
+    description: JSON map of environment slug to system environment id
+    required: false
+    default: '{}'
+  governance-mapping-json:
+    description: JSON map of business domain to governance group name
+    required: false
+    default: '{}'
+  postman-api-key:
+    description: Postman API key used for bootstrap operations
+    required: true
+  postman-access-token:
+    description: Postman access token used for governance and workspace mutations
+    required: false
+  github-token:
+    description: GitHub token for repo variable persistence
+    required: false
+  gh-fallback-token:
+    description: Fallback token for repository variable APIs
+    required: false
+  github-auth-mode:
+    description: GitHub auth mode for repository variable APIs
+    required: false
+    default: github_token_first
+  integration-backend:
+    description: Integration backend for downstream workspace connectivity
+    required: false
+    default: bifrost
+outputs:
+  workspace-id:
+    description: Postman workspace ID
+  workspace-url:
+    description: Postman workspace URL
+  workspace-name:
+    description: Postman workspace name
+  spec-id:
+    description: Uploaded Postman spec ID
+  baseline-collection-id:
+    description: Baseline collection ID
+  smoke-collection-id:
+    description: Smoke collection ID
+  contract-collection-id:
+    description: Contract collection ID
+  collections-json:
+    description: JSON summary of generated collections
+  lint-summary-json:
+    description: JSON summary of lint errors and warnings
+runs:
+  using: node20
+  main: dist/index.js
