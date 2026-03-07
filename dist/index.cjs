@@ -22679,6 +22679,20 @@ async function runBootstrap(inputs, dependencies) {
   if (!specId && dependencies.github) {
     specId = await dependencies.github.getRepositoryVariable("POSTMAN_SPEC_UID").catch(() => void 0) || void 0;
   }
+  let baselineCollectionId = inputs.baselineCollectionId;
+  let smokeCollectionId = inputs.smokeCollectionId;
+  let contractCollectionId = inputs.contractCollectionId;
+  if (dependencies.github) {
+    if (!baselineCollectionId) {
+      baselineCollectionId = await dependencies.github.getRepositoryVariable("POSTMAN_BASELINE_COLLECTION_UID").catch(() => void 0) || void 0;
+    }
+    if (!smokeCollectionId) {
+      smokeCollectionId = await dependencies.github.getRepositoryVariable("POSTMAN_SMOKE_COLLECTION_UID").catch(() => void 0) || void 0;
+    }
+    if (!contractCollectionId) {
+      contractCollectionId = await dependencies.github.getRepositoryVariable("POSTMAN_CONTRACT_COLLECTION_UID").catch(() => void 0) || void 0;
+    }
+  }
   const specContent = await runGroup(
     dependencies.core,
     specId ? "Update Spec in Spec Hub" : "Upload Spec to Spec Hub",
@@ -22724,21 +22738,42 @@ async function runBootstrap(inputs, dependencies) {
     dependencies.core,
     "Generate Collections from Spec",
     async () => {
-      outputs["baseline-collection-id"] = await dependencies.postman.generateCollection(
-        outputs["spec-id"],
-        inputs.projectName,
-        "[Baseline]"
-      );
-      outputs["smoke-collection-id"] = await dependencies.postman.generateCollection(
-        outputs["spec-id"],
-        inputs.projectName,
-        "[Smoke]"
-      );
-      outputs["contract-collection-id"] = await dependencies.postman.generateCollection(
-        outputs["spec-id"],
-        inputs.projectName,
-        "[Contract]"
-      );
+      outputs["baseline-collection-id"] = baselineCollectionId || "";
+      outputs["smoke-collection-id"] = smokeCollectionId || "";
+      outputs["contract-collection-id"] = contractCollectionId || "";
+      if (!outputs["baseline-collection-id"]) {
+        outputs["baseline-collection-id"] = await dependencies.postman.generateCollection(
+          outputs["spec-id"],
+          inputs.projectName,
+          "[Baseline]"
+        );
+      } else {
+        dependencies.core.info(
+          `Using existing baseline collection: ${outputs["baseline-collection-id"]}`
+        );
+      }
+      if (!outputs["smoke-collection-id"]) {
+        outputs["smoke-collection-id"] = await dependencies.postman.generateCollection(
+          outputs["spec-id"],
+          inputs.projectName,
+          "[Smoke]"
+        );
+      } else {
+        dependencies.core.info(
+          `Using existing smoke collection: ${outputs["smoke-collection-id"]}`
+        );
+      }
+      if (!outputs["contract-collection-id"]) {
+        outputs["contract-collection-id"] = await dependencies.postman.generateCollection(
+          outputs["spec-id"],
+          inputs.projectName,
+          "[Contract]"
+        );
+      } else {
+        dependencies.core.info(
+          `Using existing contract collection: ${outputs["contract-collection-id"]}`
+        );
+      }
     }
   );
   outputs["collections-json"] = JSON.stringify({
