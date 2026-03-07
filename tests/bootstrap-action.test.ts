@@ -133,13 +133,15 @@ describe('bootstrap action', () => {
       injectTests: vi.fn().mockResolvedValue(undefined),
       inviteRequesterToWorkspace: vi.fn().mockResolvedValue(undefined),
       tagCollection: vi.fn().mockResolvedValue(undefined),
-      uploadSpec: vi.fn().mockResolvedValue('spec-123')
+      uploadSpec: vi.fn().mockResolvedValue('spec-123'),
+      updateSpec: vi.fn().mockResolvedValue(undefined)
     };
     const internalIntegration = {
       assignWorkspaceToGovernanceGroup: vi.fn().mockResolvedValue(undefined)
     };
     const github = {
-      setRepositoryVariable: vi.fn().mockResolvedValue(undefined)
+      setRepositoryVariable: vi.fn().mockResolvedValue(undefined),
+      getRepositoryVariable: vi.fn().mockResolvedValue('')
     };
     const specFetcher = vi.fn<typeof fetch>().mockResolvedValue(
       new Response('openapi: 3.1.0', {
@@ -227,7 +229,8 @@ describe('bootstrap action', () => {
       injectTests: vi.fn(),
       inviteRequesterToWorkspace: vi.fn().mockResolvedValue(undefined),
       tagCollection: vi.fn(),
-      uploadSpec: vi.fn().mockResolvedValue('spec-123')
+      uploadSpec: vi.fn().mockResolvedValue('spec-123'),
+      updateSpec: vi.fn().mockResolvedValue(undefined)
     };
 
     await expect(
