@@ -154,8 +154,7 @@ function parseJsonValue<T>(
     return (JSON.parse(raw || JSON.stringify(fallback)) as T) ?? fallback;
   } catch (error) {
     throw new Error(
-      `Invalid JSON for ${inputName}: ${
-        error instanceof Error ? error.message : String(error)
+      `Invalid JSON for ${inputName}: ${error instanceof Error ? error.message : String(error)
       }`
     );
   }
@@ -468,7 +467,7 @@ export async function runBootstrap(
     await ensurePostmanCli(dependencies, inputs.postmanApiKey);
   });
 
-  
+
   let workspaceId = inputs.workspaceId;
   if (!workspaceId && dependencies.github) {
     workspaceId = await dependencies.github.getRepositoryVariable('POSTMAN_WORKSPACE_ID').catch(() => undefined) || undefined;
@@ -484,7 +483,7 @@ export async function runBootstrap(
   } else {
     dependencies.core.info(`Using existing workspace: ${workspaceId}`);
   }
-  
+
   outputs['workspace-id'] = workspaceId || '';
   outputs['workspace-url'] = `https://go.postman.co/workspace/${workspaceId}`;
   outputs['workspace-name'] = workspaceName;
@@ -503,8 +502,7 @@ export async function runBootstrap(
           );
         } catch (error) {
           dependencies.core.warning(
-            `Failed to assign governance group: ${
-              error instanceof Error ? error.message : String(error)
+            `Failed to assign governance group: ${error instanceof Error ? error.message : String(error)
             }`
           );
         }
@@ -524,8 +522,7 @@ export async function runBootstrap(
           );
         } catch (error) {
           dependencies.core.warning(
-            `Failed to invite requester: ${
-              error instanceof Error ? error.message : String(error)
+            `Failed to invite requester: ${error instanceof Error ? error.message : String(error)
             }`
           );
         }
@@ -544,8 +541,7 @@ export async function runBootstrap(
           await dependencies.postman.addAdminsToWorkspace(workspaceId || '', adminIds);
         } catch (error) {
           dependencies.core.warning(
-            `Failed to add team admins: ${
-              error instanceof Error ? error.message : String(error)
+            `Failed to add team admins: ${error instanceof Error ? error.message : String(error)
             }`
           );
         }
@@ -553,7 +549,7 @@ export async function runBootstrap(
     );
   }
 
-  
+
   let specId = inputs.specId;
   if (!specId && dependencies.github) {
     specId = await dependencies.github.getRepositoryVariable('POSTMAN_SPEC_UID').catch(() => undefined) || undefined;
@@ -590,7 +586,7 @@ export async function runBootstrap(
     async () => {
       const document = await fetchSpecDocument(inputs.specUrl, dependencies.specFetcher);
       if (specId) {
-        await dependencies.postman.updateSpec(specId, document);
+        await dependencies.postman.updateSpec(specId, document, workspaceId);
       } else {
         specId = await dependencies.postman.uploadSpec(
           workspaceId || '',
@@ -763,21 +759,21 @@ export async function runAction(
   const github =
     inputs.githubToken && process.env.GITHUB_REPOSITORY
       ? new GitHubApiClient({
-          authMode: inputs.githubAuthMode as GitHubApiClientAuthMode,
-          fallbackToken: inputs.ghFallbackToken,
-          repository: process.env.GITHUB_REPOSITORY,
-          secretMasker,
-          token: inputs.githubToken
-        })
+        authMode: inputs.githubAuthMode as GitHubApiClientAuthMode,
+        fallbackToken: inputs.ghFallbackToken,
+        repository: process.env.GITHUB_REPOSITORY,
+        secretMasker,
+        token: inputs.githubToken
+      })
       : undefined;
   const internalIntegration =
     inputs.postmanAccessToken
       ? createInternalIntegrationAdapter({
-          accessToken: inputs.postmanAccessToken,
-          backend: inputs.integrationBackend,
-          secretMasker,
-          teamId: process.env.POSTMAN_TEAM_ID || ''
-        })
+        accessToken: inputs.postmanAccessToken,
+        backend: inputs.integrationBackend,
+        secretMasker,
+        teamId: process.env.POSTMAN_TEAM_ID || ''
+      })
       : undefined;
 
   if (!github) {

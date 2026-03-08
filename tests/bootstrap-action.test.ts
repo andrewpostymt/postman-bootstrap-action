@@ -291,7 +291,7 @@ describe('bootstrap action', () => {
     expect(postman.createWorkspace).not.toHaveBeenCalled();
     expect(postman.uploadSpec).not.toHaveBeenCalled();
     expect(postman.generateCollection).not.toHaveBeenCalled();
-    expect(postman.updateSpec).toHaveBeenCalledWith('spec-existing', 'openapi: 3.1.0');
+    expect(postman.updateSpec).toHaveBeenCalledWith('spec-existing', 'openapi: 3.1.0', 'ws-existing');
     expect(result).toMatchObject({
       'workspace-id': 'ws-existing',
       'spec-id': 'spec-existing',
@@ -354,7 +354,7 @@ describe('bootstrap action', () => {
     expect(postman.createWorkspace).not.toHaveBeenCalled();
     expect(postman.uploadSpec).not.toHaveBeenCalled();
     expect(postman.generateCollection).not.toHaveBeenCalled();
-    expect(postman.updateSpec).toHaveBeenCalledWith('spec-from-vars', 'openapi: 3.1.0');
+    expect(postman.updateSpec).toHaveBeenCalledWith('spec-from-vars', 'openapi: 3.1.0', 'ws-from-vars');
     expect(result).toMatchObject({
       'workspace-id': 'ws-from-vars',
       'spec-id': 'spec-from-vars',

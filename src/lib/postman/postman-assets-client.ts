@@ -187,19 +187,21 @@ export class PostmanAssetsClient {
     return specId;
   }
 
-  
+
   async updateSpec(
     specId: string,
-    specContent: string
+    specContent: string,
+    workspaceId?: string
   ): Promise<void> {
-    const response = await this.request(`/specs/${specId}`, {
+    const qs = workspaceId ? `?workspaceId=${workspaceId}` : '';
+    const response = await this.request(`/specs/${specId}${qs}`, {
       method: 'PUT',
       body: JSON.stringify({
         type: 'OPENAPI:3.0',
         files: [{ path: 'index.yaml', content: specContent }]
       })
     });
-    
+
     const id = String(response?.id || '').trim();
     if (!id) {
       throw new Error('Spec update did not return an ID');

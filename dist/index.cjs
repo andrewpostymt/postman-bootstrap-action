@@ -22089,8 +22089,9 @@ var PostmanAssetsClient = class {
     }, 3, 2e3);
     return specId;
   }
-  async updateSpec(specId, specContent) {
-    const response = await this.request(`/specs/${specId}`, {
+  async updateSpec(specId, specContent, workspaceId) {
+    const qs = workspaceId ? `?workspaceId=${workspaceId}` : "";
+    const response = await this.request(`/specs/${specId}${qs}`, {
       method: "PUT",
       body: JSON.stringify({
         type: "OPENAPI:3.0",
@@ -22703,7 +22704,7 @@ async function runBootstrap(inputs, dependencies) {
     async () => {
       const document = await fetchSpecDocument(inputs.specUrl, dependencies.specFetcher);
       if (specId) {
-        await dependencies.postman.updateSpec(specId, document);
+        await dependencies.postman.updateSpec(specId, document, workspaceId);
       } else {
         specId = await dependencies.postman.uploadSpec(
           workspaceId || "",
