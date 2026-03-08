@@ -89,6 +89,39 @@ If you want the action to discover prior bootstrap state automatically on reruns
 | `github-auth-mode` | `github_token_first` | Auth mode for repository variable APIs. |
 | `integration-backend` | `bifrost` | Current public beta backend. |
 
+### Obtaining `postman-access-token` (Beta)
+
+> **⚠️ Beta limitation:** The `postman-access-token` input requires a manually-extracted session token. There is currently no public API to exchange a Postman API key (PMAK) for an access token programmatically. This manual step will be eliminated before GA.
+
+The `postman-access-token` is a Postman session token (`x-access-token`) required for internal API operations that the standard PMAK API key cannot perform — specifically workspace ↔ repo git sync (Bifrost), governance group assignment, and system environment associations. Without it, those steps are silently skipped during provisioning.
+
+**To obtain and configure the token:**
+
+1. **Log in via the Postman CLI** (requires a browser):
+   ```bash
+   postman login
+   ```
+   This opens a browser window for Postman's PKCE OAuth flow. Complete the sign-in.
+
+2. **Extract the access token** from the CLI credential store:
+   ```bash
+   cat ~/.postman/postmanrc | jq -r '.login._profiles[].accessToken'
+   ```
+
+3. **Set it as a GitHub secret** on your repository or organization:
+   ```bash
+   # Repository-level secret
+   gh secret set POSTMAN_ACCESS_TOKEN --repo <owner>/<repo>
+
+   # Organization-level secret (recommended for multi-repo use)
+   gh secret set POSTMAN_ACCESS_TOKEN --org <org> --visibility selected --repos <repo1>,<repo2>
+   ```
+   Paste the token value when prompted.
+
+> **Important:** This token is session-scoped and will expire. When it does, operations that depend on it (workspace linking, governance, system environment associations) will silently degrade. You will need to repeat the login and secret update process. There is no automated refresh mechanism.
+
+> **Note:** `postman login --with-api-key` stores a PMAK — **not** the session token these APIs require. You must use the interactive browser login.
+
 ## Outputs
 
 - `workspace-id`
