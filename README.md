@@ -1,6 +1,6 @@
 # postman-bootstrap-action
 
-Public beta GitHub Action for Postman workspace bootstrap from a registry-backed OpenAPI spec.
+Public open-alpha GitHub Action for Postman workspace bootstrap from a registry-backed OpenAPI spec.
 
 ## Scope
 
@@ -15,7 +15,7 @@ This action preserves the bootstrap slice of the API Catalog demo flow:
 - inject generated tests and apply collection tags
 - persist bootstrap repo variables needed by downstream sync work
 
-The public beta contract uses kebab-case inputs and outputs and defaults `integration-backend` to `bifrost`.
+The public open-alpha contract uses kebab-case inputs and outputs and defaults `integration-backend` to `bifrost`.
 
 For existing services, pass `workspace-id`, `spec-id`, and any existing collection IDs to rerun the bootstrap safely without creating duplicate Postman assets. When GitHub repo variable persistence is enabled, the action also falls back to `POSTMAN_WORKSPACE_ID`, `POSTMAN_SPEC_UID`, `POSTMAN_BASELINE_COLLECTION_UID`, `POSTMAN_SMOKE_COLLECTION_UID`, and `POSTMAN_CONTRACT_COLLECTION_UID` on reruns.
 
@@ -87,7 +87,7 @@ If you want the action to discover prior bootstrap state automatically on reruns
 | `github-token` | | Enables repository variable persistence and rerun fallback discovery. |
 | `gh-fallback-token` | | Optional fallback token for repository variable APIs. |
 | `github-auth-mode` | `github_token_first` | Auth mode for repository variable APIs. |
-| `integration-backend` | `bifrost` | Current public beta backend. |
+| `integration-backend` | `bifrost` | Current public open-alpha backend. |
 
 ### Obtaining `postman-api-key`
 
@@ -105,9 +105,9 @@ The `postman-api-key` is a Postman API key (PMAK) used for all standard Postman 
 
 > **Note:** The PMAK is a long-lived key tied to your Postman account. It does not require periodic renewal like the `postman-access-token`.
 
-### Obtaining `postman-access-token` (Beta)
+### Obtaining `postman-access-token` (Open Alpha)
 
-> **⚠️ Beta limitation:** The `postman-access-token` input requires a manually-extracted session token. There is currently no public API to exchange a Postman API key (PMAK) for an access token programmatically. This manual step will be eliminated before GA.
+> **⚠️ Open-alpha limitation:** The `postman-access-token` input requires a manually-extracted session token. There is currently no public API to exchange a Postman API key (PMAK) for an access token programmatically. This manual step will be eliminated before GA.
 
 The `postman-access-token` is a Postman session token (`x-access-token`) required for internal API operations that the standard PMAK API key cannot perform — specifically workspace ↔ repo git sync (Bifrost), governance group assignment, and system environment associations. Without it, those steps are silently skipped during provisioning.
 
@@ -161,11 +161,11 @@ npm run build
 
 `npm run build` produces the committed `dist/index.cjs` action bundle used by `action.yml`.
 
-## Beta Release Strategy
+## Open-Alpha Release Strategy
 
-- Beta channel tags use `v0.x.y`.
+- Open-alpha channel tags use `v0.x.y`.
 - Consumers can pin immutable tags such as `v0.2.0` for reproducibility.
-- Moving tag `v0` is used only as the rolling beta channel.
+- Moving tag `v0` is used only as the rolling open-alpha channel.
 
 ## REST Migration Seam
 
