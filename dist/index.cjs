@@ -21904,6 +21904,20 @@ var PostmanAssetsClient = class {
   getBaseUrl() {
     return this.baseUrl;
   }
+  async getMe() {
+    const res = await this.request("/me", { method: "GET" });
+    return JSON.parse(res.body);
+  }
+  async getAutoDerivedTeamId() {
+    try {
+      const data = await this.getMe();
+      if (data?.user?.teamId) {
+        return String(data.user.teamId);
+      }
+    } catch (e) {
+    }
+    return void 0;
+  }
   async request(path, init = {}) {
     const url = path.startsWith("http") ? path : `${this.baseUrl}${path}`;
     const response = await this.fetchImpl(url, {

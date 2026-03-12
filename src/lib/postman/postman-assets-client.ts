@@ -90,6 +90,23 @@ export class PostmanAssetsClient {
     return this.baseUrl;
   }
 
+  async getMe(): Promise<any> {
+    const res = await this.request('/me', { method: 'GET' });
+    return JSON.parse(res.body);
+  }
+
+  async getAutoDerivedTeamId(): Promise<string | undefined> {
+    try {
+      const data = await this.getMe();
+      if (data?.user?.teamId) {
+        return String(data.user.teamId);
+      }
+    } catch (e) {
+      // ignore
+    }
+    return undefined;
+  }
+
   private async request(
     path: string,
     init: RequestInit = {}
