@@ -2,7 +2,7 @@ import * as core from '@actions/core';
 import * as exec from '@actions/exec';
 import * as io from '@actions/io';
 
-import { betaActionContract } from './contracts.js';
+import { openAlphaActionContract } from './contracts.js';
 import { GitHubApiClient, type GitHubApiClientAuthMode } from './lib/github/github-api-client.js';
 import { createInternalIntegrationAdapter, type InternalIntegrationAdapter } from './lib/postman/internal-integration-adapter.js';
 import { PostmanAssetsClient } from './lib/postman/postman-assets-client.js';
@@ -188,11 +188,11 @@ export function resolveInputs(
 ): ResolvedInputs {
   const integrationBackend =
     getInput('integration-backend', env) ??
-    betaActionContract.inputs['integration-backend'].default ??
+    openAlphaActionContract.inputs['integration-backend'].default ??
     'bifrost';
 
   const allowedBackends =
-    betaActionContract.inputs['integration-backend'].allowedValues ?? [];
+    openAlphaActionContract.inputs['integration-backend'].allowedValues ?? [];
   if (allowedBackends.length > 0 && !allowedBackends.includes(integrationBackend)) {
     throw new Error(
       `Unsupported integration-backend "${integrationBackend}". Supported values: ${allowedBackends.join(', ')}`
@@ -200,8 +200,8 @@ export function resolveInputs(
   }
 
   const specUrl = getInput('spec-url', env) ?? '';
-  if (specUrl && !specUrl.startsWith('http://') && !specUrl.startsWith('https://')) {
-    throw new Error(`spec-url must be a valid HTTP/HTTPS URL, got: ${specUrl}`);
+  if (specUrl && !specUrl.startsWith('https://')) {
+    throw new Error(`spec-url must be a valid HTTPS URL, got: ${specUrl}`);
   }
 
   return {
@@ -218,15 +218,15 @@ export function resolveInputs(
     specUrl,
     environmentsJson:
       getInput('environments-json', env) ??
-      betaActionContract.inputs['environments-json'].default ??
+      openAlphaActionContract.inputs['environments-json'].default ??
       '["prod"]',
     systemEnvMapJson:
       getInput('system-env-map-json', env) ??
-      betaActionContract.inputs['system-env-map-json'].default ??
+      openAlphaActionContract.inputs['system-env-map-json'].default ??
       '{}',
     governanceMappingJson:
       getInput('governance-mapping-json', env) ??
-      betaActionContract.inputs['governance-mapping-json'].default ??
+      openAlphaActionContract.inputs['governance-mapping-json'].default ??
       '{}',
     postmanApiKey: getInput('postman-api-key', env) ?? '',
     postmanAccessToken: getInput('postman-access-token', env),
@@ -234,7 +234,7 @@ export function resolveInputs(
     ghFallbackToken: getInput('gh-fallback-token', env),
     githubAuthMode:
       getInput('github-auth-mode', env) ??
-      betaActionContract.inputs['github-auth-mode'].default ??
+      openAlphaActionContract.inputs['github-auth-mode'].default ??
       'github_token_first',
     integrationBackend
   };
@@ -299,23 +299,23 @@ export function readActionInputs(
     INPUT_SPEC_URL: specUrl,
     INPUT_ENVIRONMENTS_JSON:
       optionalInput(actionCore, 'environments-json') ??
-      betaActionContract.inputs['environments-json'].default,
+      openAlphaActionContract.inputs['environments-json'].default,
     INPUT_SYSTEM_ENV_MAP_JSON:
       optionalInput(actionCore, 'system-env-map-json') ??
-      betaActionContract.inputs['system-env-map-json'].default,
+      openAlphaActionContract.inputs['system-env-map-json'].default,
     INPUT_GOVERNANCE_MAPPING_JSON:
       optionalInput(actionCore, 'governance-mapping-json') ??
-      betaActionContract.inputs['governance-mapping-json'].default,
+      openAlphaActionContract.inputs['governance-mapping-json'].default,
     INPUT_POSTMAN_API_KEY: postmanApiKey,
     INPUT_POSTMAN_ACCESS_TOKEN: postmanAccessToken,
     INPUT_GITHUB_TOKEN: githubToken,
     INPUT_GH_FALLBACK_TOKEN: ghFallbackToken,
     INPUT_GITHUB_AUTH_MODE:
       optionalInput(actionCore, 'github-auth-mode') ??
-      betaActionContract.inputs['github-auth-mode'].default,
+      openAlphaActionContract.inputs['github-auth-mode'].default,
     INPUT_INTEGRATION_BACKEND:
       optionalInput(actionCore, 'integration-backend') ??
-      betaActionContract.inputs['integration-backend'].default
+      openAlphaActionContract.inputs['integration-backend'].default
   });
 
   return inputs;
@@ -371,6 +371,10 @@ export async function lintSpecViaCli(
       ignoreReturnCode: true
     }
   );
+
+  if (result.exitCode !== 0 && !result.stdout.trim()) {
+    throw new Error(`Spec lint command failed: ${result.stderr}`);
+  }
 
   let parsed: { violations?: LintViolation[] };
   try {

@@ -4,7 +4,7 @@ import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
 import {
-  betaActionContract,
+  openAlphaActionContract,
   contractInputNames,
   contractOutputNames
 } from '../src/contracts.js';
@@ -18,7 +18,7 @@ const actionManifest = parse(
   outputs: Record<string, unknown>;
 };
 
-describe('beta action contract', () => {
+describe('open-alpha action contract', () => {
   it('uses kebab-case input and output names', () => {
     const kebabCasePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -33,8 +33,8 @@ describe('beta action contract', () => {
   });
 
   it('defaults integration-backend to bifrost in the contract, manifest, and runtime', () => {
-    expect(betaActionContract.inputs['integration-backend'].default).toBe('bifrost');
-    expect(betaActionContract.inputs['integration-backend'].allowedValues).toEqual([
+    expect(openAlphaActionContract.inputs['integration-backend'].default).toBe('bifrost');
+    expect(openAlphaActionContract.inputs['integration-backend'].allowedValues).toEqual([
       'bifrost'
     ]);
     expect(actionManifest.inputs['integration-backend'].default).toBe('bifrost');
@@ -49,17 +49,25 @@ describe('beta action contract', () => {
     ).toThrow(/Unsupported integration-backend/);
   });
 
+  it('rejects non-HTTPS spec URLs', () => {
+    expect(() =>
+      resolveInputs({
+        'INPUT_SPEC_URL': 'http://example.com/spec.yaml'
+      })
+    ).toThrow(/spec-url must be a valid HTTPS URL/);
+  });
+
   it('documents the retained bootstrap steps and removed internal-only behavior', () => {
-    expect(betaActionContract.retainedBehavior).toContain('spec linting by UID');
-    expect(betaActionContract.retainedBehavior).toContain('workspace creation');
-    expect(betaActionContract.retainedBehavior).toContain(
+    expect(openAlphaActionContract.retainedBehavior).toContain('spec linting by UID');
+    expect(openAlphaActionContract.retainedBehavior).toContain('workspace creation');
+    expect(openAlphaActionContract.retainedBehavior).toContain(
       'governance group assignment'
     );
-    expect(betaActionContract.retainedBehavior).toContain(
+    expect(openAlphaActionContract.retainedBehavior).toContain(
       'GitHub repository variable persistence for downstream sync steps'
     );
-    expect(betaActionContract.removedBehavior).toContain('step mode');
-    expect(betaActionContract.removedBehavior).toContain(
+    expect(openAlphaActionContract.removedBehavior).toContain('step mode');
+    expect(openAlphaActionContract.removedBehavior).toContain(
       'aws, docker, and infra workflow concerns'
     );
   });

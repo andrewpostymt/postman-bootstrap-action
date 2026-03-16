@@ -21323,7 +21323,7 @@ var exec = __toESM(require_exec(), 1);
 var io = __toESM(require_io(), 1);
 
 // src/contracts.ts
-var betaActionContract = {
+var openAlphaActionContract = {
   name: "postman-bootstrap-action",
   description: "Public beta contract for bootstrapping Postman assets from a registry-backed spec.",
   inputs: {
@@ -21464,8 +21464,8 @@ var betaActionContract = {
     "legacy placeholder inputs such as team-id"
   ]
 };
-var contractInputNames = Object.keys(betaActionContract.inputs);
-var contractOutputNames = Object.keys(betaActionContract.outputs);
+var contractInputNames = Object.keys(openAlphaActionContract.inputs);
+var contractOutputNames = Object.keys(openAlphaActionContract.outputs);
 
 // src/lib/secrets.ts
 var REDACTED = "[REDACTED]";
@@ -22736,16 +22736,16 @@ function asStringMap(value, inputName) {
   );
 }
 function resolveInputs(env = process.env) {
-  const integrationBackend = getInput("integration-backend", env) ?? betaActionContract.inputs["integration-backend"].default ?? "bifrost";
-  const allowedBackends = betaActionContract.inputs["integration-backend"].allowedValues ?? [];
+  const integrationBackend = getInput("integration-backend", env) ?? openAlphaActionContract.inputs["integration-backend"].default ?? "bifrost";
+  const allowedBackends = openAlphaActionContract.inputs["integration-backend"].allowedValues ?? [];
   if (allowedBackends.length > 0 && !allowedBackends.includes(integrationBackend)) {
     throw new Error(
       `Unsupported integration-backend "${integrationBackend}". Supported values: ${allowedBackends.join(", ")}`
     );
   }
   const specUrl = getInput("spec-url", env) ?? "";
-  if (specUrl && !specUrl.startsWith("http://") && !specUrl.startsWith("https://")) {
-    throw new Error(`spec-url must be a valid HTTP/HTTPS URL, got: ${specUrl}`);
+  if (specUrl && !specUrl.startsWith("https://")) {
+    throw new Error(`spec-url must be a valid HTTPS URL, got: ${specUrl}`);
   }
   return {
     projectName: getInput("project-name", env) ?? "",
@@ -22759,14 +22759,14 @@ function resolveInputs(env = process.env) {
     requesterEmail: getInput("requester-email", env),
     workspaceAdminUserIds: getInput("workspace-admin-user-ids", env),
     specUrl,
-    environmentsJson: getInput("environments-json", env) ?? betaActionContract.inputs["environments-json"].default ?? '["prod"]',
-    systemEnvMapJson: getInput("system-env-map-json", env) ?? betaActionContract.inputs["system-env-map-json"].default ?? "{}",
-    governanceMappingJson: getInput("governance-mapping-json", env) ?? betaActionContract.inputs["governance-mapping-json"].default ?? "{}",
+    environmentsJson: getInput("environments-json", env) ?? openAlphaActionContract.inputs["environments-json"].default ?? '["prod"]',
+    systemEnvMapJson: getInput("system-env-map-json", env) ?? openAlphaActionContract.inputs["system-env-map-json"].default ?? "{}",
+    governanceMappingJson: getInput("governance-mapping-json", env) ?? openAlphaActionContract.inputs["governance-mapping-json"].default ?? "{}",
     postmanApiKey: getInput("postman-api-key", env) ?? "",
     postmanAccessToken: getInput("postman-access-token", env),
     githubToken: getInput("github-token", env),
     ghFallbackToken: getInput("gh-fallback-token", env),
-    githubAuthMode: getInput("github-auth-mode", env) ?? betaActionContract.inputs["github-auth-mode"].default ?? "github_token_first",
+    githubAuthMode: getInput("github-auth-mode", env) ?? openAlphaActionContract.inputs["github-auth-mode"].default ?? "github_token_first",
     integrationBackend
   };
 }
@@ -22819,15 +22819,15 @@ function readActionInputs(actionCore) {
       "workspace-admin-user-ids"
     ),
     INPUT_SPEC_URL: specUrl,
-    INPUT_ENVIRONMENTS_JSON: optionalInput(actionCore, "environments-json") ?? betaActionContract.inputs["environments-json"].default,
-    INPUT_SYSTEM_ENV_MAP_JSON: optionalInput(actionCore, "system-env-map-json") ?? betaActionContract.inputs["system-env-map-json"].default,
-    INPUT_GOVERNANCE_MAPPING_JSON: optionalInput(actionCore, "governance-mapping-json") ?? betaActionContract.inputs["governance-mapping-json"].default,
+    INPUT_ENVIRONMENTS_JSON: optionalInput(actionCore, "environments-json") ?? openAlphaActionContract.inputs["environments-json"].default,
+    INPUT_SYSTEM_ENV_MAP_JSON: optionalInput(actionCore, "system-env-map-json") ?? openAlphaActionContract.inputs["system-env-map-json"].default,
+    INPUT_GOVERNANCE_MAPPING_JSON: optionalInput(actionCore, "governance-mapping-json") ?? openAlphaActionContract.inputs["governance-mapping-json"].default,
     INPUT_POSTMAN_API_KEY: postmanApiKey,
     INPUT_POSTMAN_ACCESS_TOKEN: postmanAccessToken,
     INPUT_GITHUB_TOKEN: githubToken,
     INPUT_GH_FALLBACK_TOKEN: ghFallbackToken,
-    INPUT_GITHUB_AUTH_MODE: optionalInput(actionCore, "github-auth-mode") ?? betaActionContract.inputs["github-auth-mode"].default,
-    INPUT_INTEGRATION_BACKEND: optionalInput(actionCore, "integration-backend") ?? betaActionContract.inputs["integration-backend"].default
+    INPUT_GITHUB_AUTH_MODE: optionalInput(actionCore, "github-auth-mode") ?? openAlphaActionContract.inputs["github-auth-mode"].default,
+    INPUT_INTEGRATION_BACKEND: optionalInput(actionCore, "integration-backend") ?? openAlphaActionContract.inputs["integration-backend"].default
   });
   return inputs;
 }
@@ -22864,6 +22864,9 @@ async function lintSpecViaCli(dependencies, workspaceId, specId) {
       ignoreReturnCode: true
     }
   );
+  if (result.exitCode !== 0 && !result.stdout.trim()) {
+    throw new Error(`Spec lint command failed: ${result.stderr}`);
+  }
   let parsed;
   try {
     parsed = JSON.parse(result.stdout || "{}");

@@ -18,7 +18,7 @@ export interface BetaActionContract {
   removedBehavior: string[];
 }
 
-export const betaActionContract: BetaActionContract = {
+export const openAlphaActionContract: BetaActionContract = {
   name: 'postman-bootstrap-action',
   description: 'Public beta contract for bootstrapping Postman assets from a registry-backed spec.',
   inputs: {
@@ -161,5 +161,5 @@ export const betaActionContract: BetaActionContract = {
   ]
 };
 
-export const contractInputNames = Object.keys(betaActionContract.inputs);
-export const contractOutputNames = Object.keys(betaActionContract.outputs);
+export const contractInputNames = Object.keys(openAlphaActionContract.inputs);
+export const contractOutputNames = Object.keys(openAlphaActionContract.outputs);
