@@ -62,6 +62,10 @@ export function chooseCanonicalWorkspace(args: ChooseCanonicalWorkspaceArgs): Ca
   }
 
   if (repoWorkspaceId) {
+    const candidate = matchingWorkspaces.find((w) => w.id === repoWorkspaceId);
+    if (candidate && candidate.linkedRepoUrl && normalizeGitHubRepoUrl(candidate.linkedRepoUrl) !== normalizedRepoUrl) {
+      return { type: 'create' };
+    }
     return {
       type: 'existing',
       workspaceId: repoWorkspaceId,

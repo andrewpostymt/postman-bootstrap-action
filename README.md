@@ -87,7 +87,7 @@ If you want the action to discover prior bootstrap state automatically on reruns
 | `system-env-map-json` | `{}` | Map of environment slug to system environment ID. |
 | `governance-mapping-json` | `{}` | Map of domain to governance group name. |
 | `postman-api-key` | | Required for all Postman asset operations. |
-| `postman-access-token` | | Required for governance assignment and workspace mutations that use the internal integration path. |
+| `postman-access-token` | | Required for governance assignment and canonical workspace validation during reruns. |
 | `github-token` | | Enables repository variable persistence and rerun fallback discovery. |
 | `gh-fallback-token` | | Optional fallback token for repository variable APIs. |
 | `github-auth-mode` | `github_token_first` | Auth mode for repository variable APIs. |
@@ -113,7 +113,7 @@ The `postman-api-key` is a Postman API key (PMAK) used for all standard Postman 
 
 > **⚠️ Open-alpha limitation:** The `postman-access-token` input requires a manually-extracted session token. There is currently no public API to exchange a Postman API key (PMAK) for an access token programmatically. This manual step will be eliminated before GA.
 
-The `postman-access-token` is a Postman session token (`x-access-token`) required for internal API operations that the standard PMAK API key cannot perform — specifically governance group assignment in this action. Without it, those steps are silently skipped during provisioning.
+The `postman-access-token` is a Postman session token (`x-access-token`) required for internal API operations that the standard PMAK API key cannot perform — specifically governance group assignment and canonical workspace validation during reruns in this action. Without it, those steps degrade to warning-based behavior and name-based workspace fallback during provisioning.
 
 **To obtain and configure the token:**
 
@@ -138,7 +138,7 @@ The `postman-access-token` is a Postman session token (`x-access-token`) require
    ```
    Paste the token value when prompted.
 
-> **Important:** This token is session-scoped and will expire. When it does, operations that depend on it (governance) will silently degrade. You will need to repeat the login and secret update process. There is no automated refresh mechanism.
+> **Important:** This token is session-scoped and will expire. When it does, operations that depend on it (governance and canonical workspace validation) degrade with warnings and fallback behavior. You will need to repeat the login and secret update process. There is no automated refresh mechanism.
 
 > **Note:** `postman login --with-api-key` stores a PMAK — **not** the session token these APIs require. You must use the interactive browser login.
 

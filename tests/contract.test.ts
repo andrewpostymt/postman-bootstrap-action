@@ -72,7 +72,7 @@ describe('open-alpha action contract', () => {
     );
   });
 
-  it('builds placeholder outputs that match the public beta output surface', () => {
+  it('builds placeholder outputs that match the public open-alpha output surface', () => {
     const outputs = createPlannedOutputs(
       resolveInputs({
         INPUT_PROJECT_NAME: 'core-payments',

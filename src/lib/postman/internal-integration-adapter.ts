@@ -169,11 +169,13 @@ class BifrostInternalIntegrationAdapter implements InternalIntegrationAdapter {
     repoUrl: string
   ): Promise<void> {
     const url = 'https://bifrost-premium-https-v4.gw.postman.com/ws/proxy';
-    const headers = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'x-access-token': this.accessToken,
-      'x-entity-team-id': this.teamId
+      'x-access-token': this.accessToken
     };
+    if (this.teamId) {
+      headers['x-entity-team-id'] = this.teamId;
+    }
     const payload = {
       service: 'workspaces',
       method: 'POST',
@@ -216,13 +218,17 @@ class BifrostInternalIntegrationAdapter implements InternalIntegrationAdapter {
 
   private async getWorkspaceGitRepoUrl(workspaceId: string): Promise<string | null> {
     const url = 'https://bifrost-premium-https-v4.gw.postman.com/ws/proxy';
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-access-token': this.accessToken
+    };
+    if (this.teamId) {
+      headers['x-entity-team-id'] = this.teamId;
+    }
+
     const response = await this.fetchImpl(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-access-token': this.accessToken,
-        'x-entity-team-id': this.teamId
-      },
+      headers,
       body: JSON.stringify({
         service: 'workspaces',
         method: 'GET',

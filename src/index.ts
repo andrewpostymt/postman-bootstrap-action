@@ -200,8 +200,15 @@ export function resolveInputs(
   }
 
   const specUrl = getInput('spec-url', env) ?? '';
-  if (specUrl && !specUrl.startsWith('https://')) {
-    throw new Error(`spec-url must be a valid HTTPS URL, got: ${specUrl}`);
+  if (specUrl) {
+    try {
+      const parsedUrl = new URL(specUrl);
+      if (parsedUrl.protocol !== 'https:') {
+        throw new Error('not https');
+      }
+    } catch {
+      throw new Error(`spec-url must be a valid HTTPS URL, got: ${specUrl}`);
+    }
   }
 
   return {
@@ -474,16 +481,19 @@ export async function runBootstrap(
     'system-env-map-json'
   );
   const workspaceName = createWorkspaceName(inputs);
-  const aboutText = `Auto-provisioned by Postman CS beta for ${inputs.projectName}`;
+  const aboutText = `Auto-provisioned by Postman CS open-alpha for ${inputs.projectName}`;
 
   await runGroup(dependencies.core, 'Install Postman CLI', async () => {
     await ensurePostmanCli(dependencies, inputs.postmanApiKey);
   });
 
 
-  let workspaceId = inputs.workspaceId;
+  const explicitWorkspaceId = inputs.workspaceId;
+  let repoWorkspaceId: string | undefined;
+  let workspaceId = explicitWorkspaceId;
   if (!workspaceId && dependencies.github) {
-    workspaceId = await dependencies.github.getRepositoryVariable('POSTMAN_WORKSPACE_ID').catch(() => undefined) || undefined;
+    repoWorkspaceId = await dependencies.github.getRepositoryVariable('POSTMAN_WORKSPACE_ID').catch(() => undefined) || undefined;
+    workspaceId = repoWorkspaceId;
   }
 
   let teamId = process.env.POSTMAN_TEAM_ID || '';
@@ -494,14 +504,14 @@ export async function runBootstrap(
     ? `https://github.com/${process.env.GITHUB_REPOSITORY}`
     : '';
 
-  if (!workspaceId && repoUrl && inputs.postmanAccessToken && teamId) {
+  if (!explicitWorkspaceId && repoUrl && inputs.postmanAccessToken && teamId) {
     const selection = await runGroup(
       dependencies.core,
       'Resolve Canonical Workspace',
       async () => resolveCanonicalWorkspaceSelection({
         postman: dependencies.postman,
         workspaceName,
-        repoWorkspaceId: undefined,
+        repoWorkspaceId,
         repoUrl,
         teamId,
         accessToken: inputs.postmanAccessToken!,
@@ -517,6 +527,8 @@ export async function runBootstrap(
       dependencies.core.info(`Using canonical workspace (${selection.source}): ${workspaceId}`);
     } else if (selection.type === 'manual_review') {
       throw new Error(`Workspace selection requires manual review: ${selection.reason}`);
+    } else {
+      workspaceId = undefined;
     }
   } else if (workspaceId) {
     dependencies.core.info(`Using existing workspace: ${workspaceId}`);

@@ -212,13 +212,17 @@ export class PostmanAssetsClient {
     accessToken: string
   ): Promise<string | null> {
     const url = 'https://bifrost-premium-https-v4.gw.postman.com/ws/proxy';
+    const headers: Record<string, string> = {
+      'x-access-token': accessToken,
+      'Content-Type': 'application/json'
+    };
+    if (teamId) {
+      headers['x-entity-team-id'] = teamId;
+    }
+
     const response = await this.fetchImpl(url, {
       method: 'POST',
-      headers: {
-        'x-access-token': accessToken,
-        'x-entity-team-id': teamId,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({
         service: 'workspaces',
         method: 'GET',

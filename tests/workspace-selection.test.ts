@@ -119,29 +119,41 @@ describe('chooseCanonicalWorkspace', () => {
 
   it('returns existing with repo_var when no linked match but repo var is set', () => {
     const result = chooseCanonicalWorkspace({
+      repoWorkspaceId: 'ws-3',
       repoUrl,
-      repoWorkspaceId: 'ws-from-var',
-      matchingWorkspaces: [
-        { id: 'ws-from-var', linkedRepoUrl: null }
-      ]
+      matchingWorkspaces: []
     });
+
     expect(result).toEqual({
       type: 'existing',
-      workspaceId: 'ws-from-var',
+      workspaceId: 'ws-3',
       source: 'repo_var'
     });
+  });
+
+  it('returns create when repo var workspace matches by name but is linked to a different repository', () => {
+    const result = chooseCanonicalWorkspace({
+      repoWorkspaceId: 'ws-stale',
+      repoUrl,
+      matchingWorkspaces: [
+        {
+          id: 'ws-stale',
+          linkedRepoUrl: 'https://github.com/postman-cs/different-repo'
+        }
+      ]
+    });
+
+    expect(result).toEqual({ type: 'create' });
   });
 
   it('returns existing with name_match when no linked match and no repo var', () => {
     const result = chooseCanonicalWorkspace({
       repoUrl,
-      matchingWorkspaces: [
-        { id: 'ws-name-match', linkedRepoUrl: null }
-      ]
+      matchingWorkspaces: [{ id: 'ws-7' }]
     });
     expect(result).toEqual({
       type: 'existing',
-      workspaceId: 'ws-name-match',
+      workspaceId: 'ws-7',
       source: 'name_match'
     });
   });

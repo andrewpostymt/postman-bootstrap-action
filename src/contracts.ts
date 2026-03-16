@@ -20,7 +20,7 @@ export interface BetaActionContract {
 
 export const openAlphaActionContract: BetaActionContract = {
   name: 'postman-bootstrap-action',
-  description: 'Public beta contract for bootstrapping Postman assets from a registry-backed spec.',
+  description: 'Public open-alpha contract for bootstrapping Postman assets from a registry-backed spec.',
   inputs: {
 
     'workspace-id': {

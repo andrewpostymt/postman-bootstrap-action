@@ -376,6 +376,67 @@ describe('bootstrap action', () => {
     });
   });
 
+  it('creates a new workspace when the repo-variable workspace is linked to a different repository', async () => {
+    const previousRepository = process.env.GITHUB_REPOSITORY;
+    process.env.GITHUB_REPOSITORY = 'postman-cs/bootstrap-action-test';
+
+    try {
+      const { core } = createCoreStub();
+      const execStub = createExecStub();
+      const ioStub = createIoStub();
+      const postman = {
+        addAdminsToWorkspace: vi.fn().mockResolvedValue(undefined),
+        createWorkspace: vi.fn().mockResolvedValue({ id: 'ws-new' }),
+        findWorkspacesByName: vi.fn().mockResolvedValue([{ id: 'ws-from-vars', name: '[AF] core-payments' }]),
+        generateCollection: vi
+          .fn()
+          .mockImplementation(async (_specId: string, _projectName: string, prefix: string) => {
+            if (prefix === '[Baseline]') return 'col-baseline';
+            if (prefix === '[Smoke]') return 'col-smoke';
+            return 'col-contract';
+          }),
+        getAutoDerivedTeamId: vi.fn().mockResolvedValue('12345'),
+        getWorkspaceGitRepoUrl: vi.fn().mockResolvedValue('https://github.com/postman-cs/different-repo'),
+        injectTests: vi.fn().mockResolvedValue(undefined),
+        inviteRequesterToWorkspace: vi.fn().mockResolvedValue(undefined),
+        tagCollection: vi.fn().mockResolvedValue(undefined),
+        uploadSpec: vi.fn().mockResolvedValue('spec-123'),
+        updateSpec: vi.fn().mockResolvedValue(undefined)
+      };
+      const github = {
+        setRepositoryVariable: vi.fn().mockResolvedValue(undefined),
+        getRepositoryVariable: vi.fn(async (name: string) => {
+          const values: Record<string, string> = {
+            POSTMAN_WORKSPACE_ID: 'ws-from-vars'
+          };
+          return values[name] ?? '';
+        })
+      };
+
+      const result = await runBootstrap(createInputs(), {
+        core,
+        exec: execStub,
+        github,
+        io: ioStub,
+        postman,
+        specFetcher: vi.fn<typeof fetch>().mockResolvedValue(
+          new Response('openapi: 3.1.0', { status: 200 })
+        )
+      });
+
+      expect(postman.getWorkspaceGitRepoUrl).toHaveBeenCalledWith('ws-from-vars', '12345', 'postman-access-token');
+      expect(postman.createWorkspace).toHaveBeenCalled();
+      expect(result['workspace-id']).toBe('ws-new');
+      expect(postman.updateSpec).not.toHaveBeenCalled();
+    } finally {
+      if (previousRepository === undefined) {
+        delete process.env.GITHUB_REPOSITORY;
+      } else {
+        process.env.GITHUB_REPOSITORY = previousRepository;
+      }
+    }
+  });
+
   it('skips governance assignment when postman-access-token is absent', async () => {
     const { core } = createCoreStub();
     const execStub = createExecStub();
