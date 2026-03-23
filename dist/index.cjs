@@ -21914,32 +21914,33 @@ async function retry(operation, retriesOrOptions = {}, delayMs) {
 }
 
 // src/lib/postman/postman-assets-client.ts
-function normalizeGitHubRepoUrl(url) {
+function normalizeGitRepoUrl(url) {
   const raw = String(url || "").trim();
   if (!raw) return "";
-  const sshMatch = raw.match(/^git@github\.com:(.+)$/i);
-  if (sshMatch?.[1]) {
-    return normalizeGitHubRepoUrl(`https://github.com/${sshMatch[1]}`);
+  const sshMatch = raw.match(/^git@([^:]+):(.+)$/i);
+  if (sshMatch?.[1] && sshMatch?.[2]) {
+    return normalizeGitRepoUrl(`https://${sshMatch[1]}/${sshMatch[2]}`);
   }
   try {
     const parsed = new URL(raw);
-    if (!/github\.com$/i.test(parsed.hostname)) return raw.toLowerCase();
+    const host = parsed.hostname.toLowerCase();
     const parts = parsed.pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/i, "").split("/").filter(Boolean);
-    if (parts.length < 2) return raw.toLowerCase();
-    return `https://github.com/${parts[0].toLowerCase()}/${parts[1].toLowerCase()}`;
+    if (parts.length < 2) return raw.replace(/\.git$/i, "").replace(/\/+$/g, "").toLowerCase();
+    return `https://${host}/${parts[0].toLowerCase()}/${parts[1].toLowerCase()}`;
   } catch {
     return raw.replace(/\.git$/i, "").replace(/\/+$/g, "").toLowerCase();
   }
 }
-function extractGitHubRepoUrl(value) {
+function extractGitRepoUrl(value) {
   if (!value) return null;
   if (typeof value === "string") {
-    const normalized = normalizeGitHubRepoUrl(value);
-    return normalized.includes("github.com/") ? normalized : null;
+    const normalized = normalizeGitRepoUrl(value);
+    if (/^https:\/\/[^/]+\/[^/]+\/[^/]+$/.test(normalized)) return normalized;
+    return null;
   }
   if (Array.isArray(value)) {
     for (const item of value) {
-      const repoUrl = extractGitHubRepoUrl(item);
+      const repoUrl = extractGitRepoUrl(item);
       if (repoUrl) return repoUrl;
     }
     return null;
@@ -21948,11 +21949,11 @@ function extractGitHubRepoUrl(value) {
     const record = value;
     const preferredKeys = ["repo", "repository", "repoUrl", "repo_url", "remoteUrl", "remote_url", "origin"];
     for (const key of preferredKeys) {
-      const repoUrl = extractGitHubRepoUrl(record[key]);
+      const repoUrl = extractGitRepoUrl(record[key]);
       if (repoUrl) return repoUrl;
     }
     for (const nested of Object.values(record)) {
-      const repoUrl = extractGitHubRepoUrl(nested);
+      const repoUrl = extractGitRepoUrl(nested);
       if (repoUrl) return repoUrl;
     }
   }
@@ -22095,9 +22096,9 @@ var PostmanAssetsClient = class {
     const body = await response.text();
     if (!body.trim()) return null;
     try {
-      return extractGitHubRepoUrl(JSON.parse(body));
+      return extractGitRepoUrl(JSON.parse(body));
     } catch {
-      return extractGitHubRepoUrl(body);
+      return extractGitRepoUrl(body);
     }
   }
   async inviteRequesterToWorkspace(workspaceId, email) {
@@ -22640,9 +22641,10 @@ var BifrostInternalIntegrationAdapter = class {
     if (response.ok) return;
     if (response.status === 400) {
       const body = await response.text();
-      if (body.includes("invalidParamError") && body.includes("already exists")) {
+      const isDuplicate = body.includes("invalidParamError") && body.includes("already exists") || body.includes("projectAlreadyConnected");
+      if (isDuplicate) {
         const linkedUrl = await this.getWorkspaceGitRepoUrl(workspaceId);
-        if (normalizeGitHubRepoUrl(linkedUrl) === normalizeGitHubRepoUrl(repoUrl)) {
+        if (normalizeGitRepoUrl(linkedUrl) === normalizeGitRepoUrl(repoUrl)) {
           return;
         }
         throw new Error(
@@ -22701,10 +22703,10 @@ function createInternalIntegrationAdapter(options) {
 // src/lib/postman/workspace-selection.ts
 function chooseCanonicalWorkspace(args) {
   const repoWorkspaceId = String(args.repoWorkspaceId || "").trim();
-  const normalizedRepoUrl = normalizeGitHubRepoUrl(args.repoUrl);
+  const normalizedRepoUrl = normalizeGitRepoUrl(args.repoUrl);
   const matchingWorkspaces = [...args.matchingWorkspaces].sort((a, b) => a.id.localeCompare(b.id));
   const linkedMatches = matchingWorkspaces.filter(
-    (workspace) => normalizeGitHubRepoUrl(workspace.linkedRepoUrl) === normalizedRepoUrl
+    (workspace) => normalizeGitRepoUrl(workspace.linkedRepoUrl) === normalizedRepoUrl
   );
   if (linkedMatches.length === 1) {
     const linked = linkedMatches[0];
@@ -22731,7 +22733,7 @@ function chooseCanonicalWorkspace(args) {
   }
   if (repoWorkspaceId) {
     const candidate = matchingWorkspaces.find((w) => w.id === repoWorkspaceId);
-    if (candidate && candidate.linkedRepoUrl && normalizeGitHubRepoUrl(candidate.linkedRepoUrl) !== normalizedRepoUrl) {
+    if (candidate && candidate.linkedRepoUrl && normalizeGitRepoUrl(candidate.linkedRepoUrl) !== normalizedRepoUrl) {
       return { type: "create" };
     }
     return {
@@ -22742,7 +22744,7 @@ function chooseCanonicalWorkspace(args) {
   }
   if (matchingWorkspaces.length > 0) {
     const candidate = matchingWorkspaces[0];
-    if (candidate.linkedRepoUrl && normalizeGitHubRepoUrl(candidate.linkedRepoUrl) !== normalizedRepoUrl) {
+    if (candidate.linkedRepoUrl && normalizeGitRepoUrl(candidate.linkedRepoUrl) !== normalizedRepoUrl) {
       return { type: "create" };
     }
     return {

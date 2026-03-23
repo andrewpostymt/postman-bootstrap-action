@@ -1,5 +1,5 @@
 import { HttpError } from '../http-error.js';
-import { normalizeGitHubRepoUrl } from './postman-assets-client.js';
+import { normalizeGitRepoUrl } from './postman-assets-client.js';
 import { createSecretMasker, type SecretMasker } from '../secrets.js';
 
 export type InternalIntegrationBackend = 'bifrost';
@@ -197,9 +197,14 @@ class BifrostInternalIntegrationAdapter implements InternalIntegrationAdapter {
 
     if (response.status === 400) {
       const body = await response.text();
-      if (body.includes('invalidParamError') && body.includes('already exists')) {
+      // Handle both legacy ('invalidParamError' + 'already exists') and
+      // current ('projectAlreadyConnected') Bifrost duplicate-link errors.
+      const isDuplicate =
+        (body.includes('invalidParamError') && body.includes('already exists')) ||
+        body.includes('projectAlreadyConnected');
+      if (isDuplicate) {
         const linkedUrl = await this.getWorkspaceGitRepoUrl(workspaceId);
-        if (normalizeGitHubRepoUrl(linkedUrl) === normalizeGitHubRepoUrl(repoUrl)) {
+        if (normalizeGitRepoUrl(linkedUrl) === normalizeGitRepoUrl(repoUrl)) {
           return;
         }
         throw new Error(

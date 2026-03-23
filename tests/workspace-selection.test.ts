@@ -4,9 +4,9 @@ import {
   chooseCanonicalWorkspace,
   resolveCanonicalWorkspaceSelection
 } from '../src/lib/postman/workspace-selection.js';
-import { normalizeGitHubRepoUrl } from '../src/lib/postman/postman-assets-client.js';
+import { normalizeGitHubRepoUrl, normalizeGitRepoUrl } from '../src/lib/postman/postman-assets-client.js';
 
-describe('normalizeGitHubRepoUrl', () => {
+describe('normalizeGitHubRepoUrl (backward-compat alias)', () => {
   it('returns empty string for empty input', () => {
     expect(normalizeGitHubRepoUrl('')).toBe('');
     expect(normalizeGitHubRepoUrl(null)).toBe('');
@@ -36,10 +36,58 @@ describe('normalizeGitHubRepoUrl', () => {
       'https://github.com/postman-cs/my-repo'
     );
   });
+});
 
-  it('returns non-GitHub URLs lowercased but otherwise unchanged', () => {
-    const url = 'https://gitlab.com/org/repo';
-    expect(normalizeGitHubRepoUrl(url)).toBe(url);
+describe('normalizeGitRepoUrl', () => {
+  it('returns empty string for empty input', () => {
+    expect(normalizeGitRepoUrl('')).toBe('');
+    expect(normalizeGitRepoUrl(null)).toBe('');
+    expect(normalizeGitRepoUrl(undefined)).toBe('');
+  });
+
+  it('normalizes GitHub HTTPS URLs', () => {
+    expect(normalizeGitRepoUrl('https://github.com/Postman-CS/my-repo')).toBe(
+      'https://github.com/postman-cs/my-repo'
+    );
+  });
+
+  it('normalizes GitLab HTTPS URLs', () => {
+    expect(normalizeGitRepoUrl('https://gitlab.com/Org-Name/My-Repo')).toBe(
+      'https://gitlab.com/org-name/my-repo'
+    );
+  });
+
+  it('strips .git from GitLab URLs', () => {
+    expect(normalizeGitRepoUrl('https://gitlab.com/org/repo.git')).toBe(
+      'https://gitlab.com/org/repo'
+    );
+  });
+
+  it('converts GitLab SSH URLs to HTTPS', () => {
+    expect(normalizeGitRepoUrl('git@gitlab.com:org/repo.git')).toBe(
+      'https://gitlab.com/org/repo'
+    );
+  });
+
+  it('handles self-hosted GitLab instances', () => {
+    expect(normalizeGitRepoUrl('https://git.example.com/team/project.git')).toBe(
+      'https://git.example.com/team/project'
+    );
+    expect(normalizeGitRepoUrl('git@git.example.com:team/project.git')).toBe(
+      'https://git.example.com/team/project'
+    );
+  });
+
+  it('strips trailing .git from GitHub URLs', () => {
+    expect(normalizeGitRepoUrl('https://github.com/postman-cs/my-repo.git')).toBe(
+      'https://github.com/postman-cs/my-repo'
+    );
+  });
+
+  it('converts GitHub SSH URLs to HTTPS', () => {
+    expect(normalizeGitRepoUrl('git@github.com:postman-cs/my-repo.git')).toBe(
+      'https://github.com/postman-cs/my-repo'
+    );
   });
 });
 

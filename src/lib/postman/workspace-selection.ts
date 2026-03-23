@@ -1,4 +1,4 @@
-import { normalizeGitHubRepoUrl } from './postman-assets-client.js';
+import { normalizeGitRepoUrl } from './postman-assets-client.js';
 
 type WorkspaceCandidate = {
   id: string;
@@ -27,11 +27,11 @@ export type CanonicalWorkspaceSelection =
 
 export function chooseCanonicalWorkspace(args: ChooseCanonicalWorkspaceArgs): CanonicalWorkspaceSelection {
   const repoWorkspaceId = String(args.repoWorkspaceId || '').trim();
-  const normalizedRepoUrl = normalizeGitHubRepoUrl(args.repoUrl);
+  const normalizedRepoUrl = normalizeGitRepoUrl(args.repoUrl);
   const matchingWorkspaces = [...args.matchingWorkspaces].sort((a, b) => a.id.localeCompare(b.id));
 
   const linkedMatches = matchingWorkspaces.filter((workspace) =>
-    normalizeGitHubRepoUrl(workspace.linkedRepoUrl) === normalizedRepoUrl,
+    normalizeGitRepoUrl(workspace.linkedRepoUrl) === normalizedRepoUrl,
   );
 
   if (linkedMatches.length === 1) {
@@ -63,7 +63,7 @@ export function chooseCanonicalWorkspace(args: ChooseCanonicalWorkspaceArgs): Ca
 
   if (repoWorkspaceId) {
     const candidate = matchingWorkspaces.find((w) => w.id === repoWorkspaceId);
-    if (candidate && candidate.linkedRepoUrl && normalizeGitHubRepoUrl(candidate.linkedRepoUrl) !== normalizedRepoUrl) {
+    if (candidate && candidate.linkedRepoUrl && normalizeGitRepoUrl(candidate.linkedRepoUrl) !== normalizedRepoUrl) {
       return { type: 'create' };
     }
     return {
@@ -75,7 +75,7 @@ export function chooseCanonicalWorkspace(args: ChooseCanonicalWorkspaceArgs): Ca
 
   if (matchingWorkspaces.length > 0) {
     const candidate = matchingWorkspaces[0];
-    if (candidate.linkedRepoUrl && normalizeGitHubRepoUrl(candidate.linkedRepoUrl) !== normalizedRepoUrl) {
+    if (candidate.linkedRepoUrl && normalizeGitRepoUrl(candidate.linkedRepoUrl) !== normalizedRepoUrl) {
       return { type: 'create' };
     }
     return {

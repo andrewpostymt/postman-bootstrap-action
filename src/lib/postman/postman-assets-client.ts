@@ -17,39 +17,53 @@ export interface PostmanAssetsClientOptions {
   secretMasker?: SecretMasker;
 }
 
+/**
+ * Normalize a git repository URL to a canonical lowercase form.
+ * Handles GitHub and GitLab (cloud and self-hosted) HTTPS and SSH URLs.
+ * Strips trailing `.git` suffixes and trailing slashes.
+ *
+ * @deprecated Alias preserved for backward compatibility. Use {@link normalizeGitRepoUrl}.
+ */
 export function normalizeGitHubRepoUrl(url: string | null | undefined): string {
+  return normalizeGitRepoUrl(url);
+}
+
+export function normalizeGitRepoUrl(url: string | null | undefined): string {
   const raw = String(url || '').trim();
   if (!raw) return '';
 
-  const sshMatch = raw.match(/^git@github\.com:(.+)$/i);
-  if (sshMatch?.[1]) {
-    return normalizeGitHubRepoUrl(`https://github.com/${sshMatch[1]}`);
+  // git@<host>:<owner>/<repo>.git  ->  https://<host>/<owner>/<repo>
+  const sshMatch = raw.match(/^git@([^:]+):(.+)$/i);
+  if (sshMatch?.[1] && sshMatch?.[2]) {
+    return normalizeGitRepoUrl(`https://${sshMatch[1]}/${sshMatch[2]}`);
   }
 
   try {
     const parsed = new URL(raw);
-    if (!/github\.com$/i.test(parsed.hostname)) return raw.toLowerCase();
+    const host = parsed.hostname.toLowerCase();
     const parts = parsed.pathname
       .replace(/^\/+|\/+$/g, '')
       .replace(/\.git$/i, '')
       .split('/')
       .filter(Boolean);
-    if (parts.length < 2) return raw.toLowerCase();
-    return `https://github.com/${parts[0].toLowerCase()}/${parts[1].toLowerCase()}`;
+    if (parts.length < 2) return raw.replace(/\.git$/i, '').replace(/\/+$/g, '').toLowerCase();
+    return `https://${host}/${parts[0].toLowerCase()}/${parts[1].toLowerCase()}`;
   } catch {
     return raw.replace(/\.git$/i, '').replace(/\/+$/g, '').toLowerCase();
   }
 }
 
-function extractGitHubRepoUrl(value: unknown): string | null {
+function extractGitRepoUrl(value: unknown): string | null {
   if (!value) return null;
   if (typeof value === 'string') {
-    const normalized = normalizeGitHubRepoUrl(value);
-    return normalized.includes('github.com/') ? normalized : null;
+    const normalized = normalizeGitRepoUrl(value);
+    // Accept any URL that looks like a hosted git repo (github.com, gitlab.com, or self-hosted)
+    if (/^https:\/\/[^/]+\/[^/]+\/[^/]+$/.test(normalized)) return normalized;
+    return null;
   }
   if (Array.isArray(value)) {
     for (const item of value) {
-      const repoUrl = extractGitHubRepoUrl(item);
+      const repoUrl = extractGitRepoUrl(item);
       if (repoUrl) return repoUrl;
     }
     return null;
@@ -58,11 +72,11 @@ function extractGitHubRepoUrl(value: unknown): string | null {
     const record = value as Record<string, unknown>;
     const preferredKeys = ['repo', 'repository', 'repoUrl', 'repo_url', 'remoteUrl', 'remote_url', 'origin'];
     for (const key of preferredKeys) {
-      const repoUrl = extractGitHubRepoUrl(record[key]);
+      const repoUrl = extractGitRepoUrl(record[key]);
       if (repoUrl) return repoUrl;
     }
     for (const nested of Object.values(record)) {
-      const repoUrl = extractGitHubRepoUrl(nested);
+      const repoUrl = extractGitRepoUrl(nested);
       if (repoUrl) return repoUrl;
     }
   }
@@ -240,9 +254,9 @@ export class PostmanAssetsClient {
     if (!body.trim()) return null;
 
     try {
-      return extractGitHubRepoUrl(JSON.parse(body));
+      return extractGitRepoUrl(JSON.parse(body));
     } catch {
-      return extractGitHubRepoUrl(body);
+      return extractGitRepoUrl(body);
     }
   }
 
