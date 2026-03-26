@@ -8,6 +8,7 @@ import { GitHubApiClient, type GitHubApiClientAuthMode } from './lib/github/gith
 import { createInternalIntegrationAdapter, type InternalIntegrationAdapter } from './lib/postman/internal-integration-adapter.js';
 import { PostmanAssetsClient } from './lib/postman/postman-assets-client.js';
 import { resolveCanonicalWorkspaceSelection } from './lib/postman/workspace-selection.js';
+import { detectRepoContext } from './lib/repo/context.js';
 import { retry } from './lib/retry.js';
 import { createSecretMasker } from './lib/secrets.js';
 
@@ -22,6 +23,8 @@ export interface ResolvedInputs {
   domainCode?: string;
   requesterEmail?: string;
   workspaceAdminUserIds?: string;
+  teamId?: string;
+  repoUrl?: string;
   specUrl: string;
   environmentsJson: string;
   systemEnvMapJson: string;
@@ -120,6 +123,13 @@ export interface BootstrapExecutionDependencies {
   specFetcher: typeof fetch;
 }
 
+export interface BootstrapDependencyFactories {
+  core: Pick<CoreLike, 'error' | 'group' | 'info' | 'setOutput' | 'warning'>;
+  exec: ExecLike;
+  io: IOLike;
+  specFetcher?: typeof fetch;
+}
+
 function normalizeInputValue(value: string | undefined): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -187,6 +197,13 @@ function asStringMap(value: unknown, inputName: string): Record<string, string> 
 export function resolveInputs(
   env: NodeJS.ProcessEnv = process.env
 ): ResolvedInputs {
+  const repoContext = detectRepoContext(
+    {
+      repoUrl: getInput('repo-url', env)
+    },
+    env
+  );
+
   const integrationBackend =
     getInput('integration-backend', env) ??
     openAlphaActionContract.inputs['integration-backend'].default ??
@@ -222,7 +239,10 @@ export function resolveInputs(
     domain: getInput('domain', env),
     domainCode: getInput('domain-code', env),
     requesterEmail: getInput('requester-email', env),
-    workspaceAdminUserIds: getInput('workspace-admin-user-ids', env),
+    workspaceAdminUserIds:
+      getInput('workspace-admin-user-ids', env) || env.WORKSPACE_ADMIN_USER_IDS || '',
+    teamId: getInput('team-id', env) || env.POSTMAN_TEAM_ID || '',
+    repoUrl: repoContext.repoUrl || '',
     specUrl,
     environmentsJson:
       getInput('environments-json', env) ??
@@ -291,6 +311,7 @@ export function readActionInputs(
   if (ghFallbackToken) actionCore.setSecret(ghFallbackToken);
 
   const inputs = resolveInputs({
+    ...process.env,
     INPUT_PROJECT_NAME: projectName,
     INPUT_WORKSPACE_ID: optionalInput(actionCore, 'workspace-id'),
     INPUT_SPEC_ID: optionalInput(actionCore, 'spec-id'),
@@ -304,6 +325,9 @@ export function readActionInputs(
       actionCore,
       'workspace-admin-user-ids'
     ),
+    INPUT_TEAM_ID:
+      optionalInput(actionCore, 'postman-team-id') || process.env.POSTMAN_TEAM_ID,
+    INPUT_REPO_URL: optionalInput(actionCore, 'repo-url'),
     INPUT_SPEC_URL: specUrl,
     INPUT_ENVIRONMENTS_JSON:
       optionalInput(actionCore, 'environments-json') ??
@@ -561,13 +585,11 @@ export async function runBootstrap(
     workspaceId = repoWorkspaceId;
   }
 
-  let teamId = process.env.POSTMAN_TEAM_ID || '';
+  let teamId = inputs.teamId || '';
   if (!teamId) {
     teamId = await dependencies.postman.getAutoDerivedTeamId() || '';
   }
-  const repoUrl = process.env.GITHUB_REPOSITORY
-    ? `https://github.com/${process.env.GITHUB_REPOSITORY}`
-    : '';
+  const repoUrl = inputs.repoUrl || '';
 
   if (!explicitWorkspaceId && repoUrl && inputs.postmanAccessToken && teamId) {
     const selection = await runGroup(
@@ -654,8 +676,7 @@ export async function runBootstrap(
     );
   }
 
-  const adminIds =
-    inputs.workspaceAdminUserIds || process.env.WORKSPACE_ADMIN_USER_IDS || '';
+  const adminIds = inputs.workspaceAdminUserIds || '';
   if (adminIds) {
     await runGroup(
       dependencies.core,
@@ -873,6 +894,29 @@ export async function runAction(
   actionIo: IOLike = io
 ): Promise<PlannedOutputs> {
   const inputs = readActionInputs(actionCore);
+  const dependencies = createBootstrapDependencies(inputs, {
+    core: actionCore,
+    exec: actionExec,
+    io: actionIo,
+    specFetcher: fetch
+  });
+
+  if (!dependencies.github) {
+    actionCore.info('GitHub repository variable persistence disabled for this run');
+  }
+  if (inputs.domain && !dependencies.internalIntegration) {
+    actionCore.warning(
+      'Skipping governance assignment because postman-access-token is not configured'
+    );
+  }
+
+  return runBootstrap(inputs, dependencies);
+}
+
+export function createBootstrapDependencies(
+  inputs: ResolvedInputs,
+  factories: BootstrapDependencyFactories
+): BootstrapExecutionDependencies {
   const secretMasker = createSecretMasker([
     inputs.postmanApiKey,
     inputs.postmanAccessToken,
@@ -883,12 +927,13 @@ export async function runAction(
     apiKey: inputs.postmanApiKey,
     secretMasker
   });
+  const repository = extractRepositorySlug(inputs.repoUrl);
   const github =
-    inputs.githubToken && process.env.GITHUB_REPOSITORY
+    inputs.githubToken && inputs.repoUrl && repository
       ? new GitHubApiClient({
         authMode: inputs.githubAuthMode as GitHubApiClientAuthMode,
         fallbackToken: inputs.ghFallbackToken,
-        repository: process.env.GITHUB_REPOSITORY,
+        repository,
         secretMasker,
         token: inputs.githubToken
       })
@@ -899,28 +944,38 @@ export async function runAction(
         accessToken: inputs.postmanAccessToken,
         backend: inputs.integrationBackend,
         secretMasker,
-        teamId: process.env.POSTMAN_TEAM_ID || ''
+        teamId: inputs.teamId || ''
       })
       : undefined;
 
-  if (!github) {
-    actionCore.info('GitHub repository variable persistence disabled for this run');
-  }
-  if (inputs.domain && !internalIntegration) {
-    actionCore.warning(
-      'Skipping governance assignment because postman-access-token is not configured'
-    );
-  }
-
-  return runBootstrap(inputs, {
-    core: actionCore,
-    exec: actionExec,
+  return {
+    core: factories.core,
+    exec: factories.exec,
     github,
-    io: actionIo,
+    io: factories.io,
     internalIntegration,
     postman,
-    specFetcher: fetch
-  });
+    specFetcher: factories.specFetcher ?? fetch
+  };
+}
+
+export function extractRepositorySlug(repoUrl: string | undefined): string | undefined {
+  const normalized = normalizeInputValue(repoUrl);
+  if (!normalized) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    const pathname = parsed.pathname.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '');
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments.length >= 2) {
+      return `${segments[0]}/${segments[1]}`;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const currentModulePath = typeof __filename === 'string' ? __filename : '';

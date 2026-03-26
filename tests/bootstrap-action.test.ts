@@ -62,6 +62,7 @@ function createInputs(overrides: Partial<ResolvedInputs> = {}): ResolvedInputs {
     domainCode: 'AF',
     requesterEmail: 'owner@example.com',
     workspaceAdminUserIds: '101,102',
+    repoUrl: 'https://github.com/postman-cs/bootstrap-action-test',
     specUrl: 'https://example.test/openapi.yaml',
     environmentsJson: '["prod","stage"]',
     systemEnvMapJson: '{"prod":"sys-prod","stage":"sys-stage"}',
