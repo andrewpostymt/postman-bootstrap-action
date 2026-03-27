@@ -43,6 +43,31 @@ export const openAlphaActionContract: BetaActionContract = {
       description: 'Existing contract collection ID.',
       required: false
     },
+    'sync-examples': {
+      description: 'Whether linked spec/collection relations should enable example syncing.',
+      required: false,
+      default: 'true',
+      allowedValues: ['true', 'false']
+    },
+    'collection-sync-mode': {
+      description:
+        'Collection lifecycle policy: reuse existing collections, refresh them from the latest spec, or version them by release label.',
+      required: false,
+      default: 'refresh',
+      allowedValues: ['reuse', 'refresh', 'version']
+    },
+    'spec-sync-mode': {
+      description:
+        'Spec lifecycle policy: update the canonical spec or create/reuse a versioned spec for the resolved release label.',
+      required: false,
+      default: 'update',
+      allowedValues: ['update', 'version']
+    },
+    'release-label': {
+      description:
+        'Optional release label. When omitted for versioned sync, the action derives one from GitHub ref metadata.',
+      required: false
+    },
     'project-name': {
       description: 'Service project name.',
       required: true
@@ -63,19 +88,13 @@ export const openAlphaActionContract: BetaActionContract = {
       description: 'Comma-separated workspace admin user ids.',
       required: false
     },
+    'workspace-team-id': {
+      description: 'Numeric sub-team ID for org-mode workspace creation.',
+      required: false
+    },
     'spec-url': {
       description: 'HTTPS URL to the OpenAPI document.',
       required: true
-    },
-    'environments-json': {
-      description: 'JSON array of environment slugs to preserve in bootstrap outputs.',
-      required: false,
-      default: '["prod"]'
-    },
-    'system-env-map-json': {
-      description: 'JSON map of environment slug to system environment id.',
-      required: false,
-      default: '{}'
     },
     'governance-mapping-json': {
       description: 'JSON map of business domain to governance group name.',
@@ -89,19 +108,6 @@ export const openAlphaActionContract: BetaActionContract = {
     'postman-access-token': {
       description: 'Postman access token used for governance and workspace mutations.',
       required: false
-    },
-    'github-token': {
-      description: 'GitHub token for repository variable persistence.',
-      required: false
-    },
-    'gh-fallback-token': {
-      description: 'Fallback token for repository variable APIs.',
-      required: false
-    },
-    'github-auth-mode': {
-      description: 'GitHub auth mode for repository variable APIs.',
-      required: false,
-      default: 'github_token_first'
     },
     'integration-backend': {
       description: 'Integration backend for downstream workspace connectivity.',
@@ -148,8 +154,8 @@ export const openAlphaActionContract: BetaActionContract = {
     'OpenAPI operation summary normalization before upload (missing or oversized summaries)',
     'spec linting by UID',
     'baseline, smoke, and contract collection generation',
+    'collection refresh and versioning policies',
     'collection tagging',
-    'GitHub repository variable persistence for downstream sync steps',
     'workspace, spec, and collection outputs'
   ],
   removedBehavior: [

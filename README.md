@@ -12,8 +12,9 @@ This action preserves the bootstrap slice of the API Catalog demo flow:
 - upload or update a remote spec in Spec Hub (after normalizing operation summaries — see below)
 - lint the uploaded spec by UID with the Postman CLI
 - generate missing baseline, smoke, and contract collections or reuse existing ones
+- optionally refresh current collections from the latest spec or create release-scoped spec and collection assets
 - inject generated tests and apply collection tags
-- persist bootstrap repo variables needed by downstream sync work
+- reuse committed `.postman/resources.yaml` state from the checked-out ref when present
 
 The public open-alpha contract uses kebab-case inputs and outputs and defaults `integration-backend` to `bifrost`.
 
@@ -22,7 +23,14 @@ The public open-alpha contract uses kebab-case inputs and outputs and defaults `
 Workspace-to-repository linking via Bifrost supports both **GitHub** and **GitLab** (cloud and self-hosted) repository URLs. The `repo-url` value (or the auto-derived URL from CI environment variables) is stored as-is by Bifrost without provider-specific validation. URL normalization handles HTTPS, SSH (`git@`), and `.git` suffix variants for both providers.
 The public open-alpha contract uses kebab-case inputs and outputs and defaults `integration-backend` to `bifrost`.
 
-For existing services, pass `workspace-id`, `spec-id`, and any existing collection IDs to rerun the bootstrap safely without creating duplicate Postman assets. When GitHub repo variable persistence is enabled, the action also falls back to `POSTMAN_WORKSPACE_ID`, `POSTMAN_SPEC_UID`, `POSTMAN_BASELINE_COLLECTION_UID`, `POSTMAN_SMOKE_COLLECTION_UID`, and `POSTMAN_CONTRACT_COLLECTION_UID` on reruns.
+For existing services, pass `workspace-id`, `spec-id`, and any existing collection IDs to rerun the bootstrap safely without creating duplicate Postman assets. When `.postman/resources.yaml` is present in the checked-out ref, the action also reuses its workspace/spec/collection mappings automatically.
+
+Lifecycle behavior remains backward-compatible except for collection default mode:
+
+- `collection-sync-mode: refresh`
+- `spec-sync-mode: update`
+
+If you do not set those inputs, the action refreshes collection pointers from the resolved spec and keeps one canonical spec update path.
 
 ### Bootstrap phase independence
 
@@ -43,6 +51,42 @@ This layered design means customers can:
 
 The action automatically derives the Postman Team ID from your `postman-api-key` via the `/me` API. There is no need to supply a separate team ID input. If the environment variable `POSTMAN_TEAM_ID` is set, that value takes precedence.
 
+### Org-mode teams
+
+Postman organizations with multiple sub-teams (squads) require an explicit `workspace-team-id` to create workspaces. The Postman API does not allow workspace creation at the organization level -- a specific sub-team must own each workspace.
+
+**How it works:**
+
+1. The action calls `GET /teams` to check if the API key belongs to an org-mode account.
+2. If multiple sub-teams are detected and no `workspace-team-id` is provided, the action fails with a list of available sub-teams and their numeric IDs.
+3. Set `workspace-team-id` to the desired sub-team ID to proceed.
+
+**Example (GitHub Actions):**
+
+```yaml
+- uses: postman-cs/postman-bootstrap-action@v0
+  with:
+    project-name: core-payments
+    spec-url: https://example.com/openapi.yaml
+    workspace-team-id: '132319'
+    postman-api-key: ${{ secrets.POSTMAN_API_KEY }}
+```
+
+To persist the sub-team ID across runs, store it as a repository variable:
+
+```yaml
+workspace-team-id: ${{ vars.POSTMAN_WORKSPACE_TEAM_ID }}
+```
+
+**CLI usage:**
+
+```bash
+postman-bootstrap --workspace-team-id 132319 ...
+```
+
+Or via environment variable: `export POSTMAN_WORKSPACE_TEAM_ID=132319`
+
+Non-org accounts (single team) are unaffected and do not need this input.
 ### OpenAPI operation summaries (normalization)
 
 Before upload to Spec Hub, the action parses JSON or YAML OpenAPI documents and adjusts **path operations** so collection generation is less likely to fail:
@@ -71,13 +115,9 @@ jobs:
           requester-email: owner@example.com
           workspace-admin-user-ids: 101,102
           spec-url: https://example.com/openapi.yaml
-          environments-json: '["prod","stage"]'
-          system-env-map-json: '{"prod":"uuid-prod","stage":"uuid-stage"}'
           governance-mapping-json: '{"core-banking":"Core Banking"}'
           postman-api-key: ${{ secrets.POSTMAN_API_KEY }}
           postman-access-token: ${{ secrets.POSTMAN_ACCESS_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          gh-fallback-token: ${{ secrets.GH_FALLBACK_TOKEN }}
 
   bootstrap-existing:
     runs-on: ubuntu-latest
@@ -95,7 +135,78 @@ jobs:
           postman-api-key: ${{ secrets.POSTMAN_API_KEY }}
 ```
 
-If you want the action to discover prior bootstrap state automatically on reruns, provide a `github-token` so it can read the stored repository variables before creating new Postman assets.
+If you want the action to discover prior bootstrap state automatically on reruns, commit `.postman/resources.yaml` and run the action on the ref whose state you want to reuse.
+
+## CLI Usage (Non-GitHub CI)
+
+The CLI is available for GitLab CI, Bitbucket Pipelines, Azure DevOps, and other CI systems.
+GitHub Actions users should continue using the `action.yml` interface.
+
+Install globally:
+
+```bash
+npm install -g postman-bootstrap-action
+```
+
+Basic usage:
+
+```bash
+postman-bootstrap \
+  --project-name core-payments \
+  --spec-url https://example.com/openapi.yaml \
+  --postman-api-key "$POSTMAN_API_KEY" \
+  --postman-access-token "$POSTMAN_ACCESS_TOKEN" \
+  --result-json bootstrap-result.json \
+  --dotenv-path bootstrap.env
+```
+
+The CLI auto-detects the CI provider from environment variables for GitHub, GitLab, Bitbucket, and Azure DevOps.
+It writes JSON to stdout, with all logs sent to stderr.
+Use `--result-json` to write the JSON payload to a file, and `--dotenv-path` to emit shell-sourceable `KEY=VALUE` output with the `POSTMAN_BOOTSTRAP_` prefix.
+
+Example GitLab CI job:
+
+```yaml
+bootstrap:
+  image: node:20
+  script:
+    - npm install -g postman-bootstrap-action
+    - postman-bootstrap --project-name core-payments --spec-url "$SPEC_URL" --postman-api-key "$POSTMAN_API_KEY" --postman-access-token "$POSTMAN_ACCESS_TOKEN" --result-json bootstrap-result.json --dotenv-path bootstrap.env
+  artifacts:
+    paths:
+      - bootstrap-result.json
+      - bootstrap.env
+```
+
+Example Bitbucket Pipelines step:
+
+```yaml
+pipelines:
+  default:
+    - step:
+        image: node:20
+        script:
+          - npm install -g postman-bootstrap-action
+          - postman-bootstrap --project-name core-payments --spec-url "$SPEC_URL" --postman-api-key "$POSTMAN_API_KEY" --postman-access-token "$POSTMAN_ACCESS_TOKEN" --result-json bootstrap-result.json --dotenv-path bootstrap.env
+        artifacts:
+          - bootstrap-result.json
+          - bootstrap.env
+```
+
+Example Azure DevOps job:
+
+```yaml
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '20.x'
+  - script: |
+      npm install -g postman-bootstrap-action
+      postman-bootstrap --project-name core-payments --spec-url "$(SPEC_URL)" --postman-api-key "$(POSTMAN_API_KEY)" --postman-access-token "$(POSTMAN_ACCESS_TOKEN)" --result-json bootstrap-result.json --dotenv-path bootstrap.env
+    displayName: Bootstrap Postman assets
+  - publish: bootstrap-result.json
+  - publish: bootstrap.env
+```
 
 ## Inputs
 
@@ -106,21 +217,102 @@ If you want the action to discover prior bootstrap state automatically on reruns
 | `baseline-collection-id` | | Reuse an existing baseline collection. |
 | `smoke-collection-id` | | Reuse an existing smoke collection. |
 | `contract-collection-id` | | Reuse an existing contract collection. |
+| `sync-examples` | `true` | Whether linked spec/collection relations should enable example syncing during cloud linkage. |
+| `collection-sync-mode` | `refresh` | Collection lifecycle policy. `reuse` keeps existing collections, `refresh` regenerates the current collection set from the latest spec, and `version` creates or reuses release-scoped collections. |
+| `spec-sync-mode` | `update` | Spec lifecycle policy. `update` keeps one canonical spec current in Spec Hub, while `version` creates or reuses a release-scoped spec asset. |
+| `release-label` | | Optional release label used for versioned specs and collections. When omitted for versioned sync, the action derives one from GitHub tag or branch metadata. |
 | `project-name` | | Service name used in workspace and asset naming. |
 | `domain` | | Business domain used for governance assignment. |
 | `domain-code` | | Short prefix used when constructing the workspace name. |
 | `requester-email` | | Optional user invited into the workspace. |
 | `workspace-admin-user-ids` | | Comma-separated Postman user IDs to grant admin access. |
+| `workspace-team-id` | | Numeric sub-team ID for org-mode workspace creation. Required when the API key belongs to an org with multiple sub-teams. |
 | `spec-url` | | Required registry-backed OpenAPI document URL. |
-| `environments-json` | `["prod"]` | Environment slugs preserved in outputs and repo variables. |
-| `system-env-map-json` | `{}` | Map of environment slug to system environment ID. |
 | `governance-mapping-json` | `{}` | Map of domain to governance group name. |
 | `postman-api-key` | | Required for all Postman asset operations. |
 | `postman-access-token` | | Required for governance assignment and canonical workspace validation during reruns. |
-| `github-token` | | Enables repository variable persistence and rerun fallback discovery. |
-| `gh-fallback-token` | | Optional fallback token for repository variable APIs. |
-| `github-auth-mode` | `github_token_first` | Auth mode for repository variable APIs. |
 | `integration-backend` | `bifrost` | Current public open-alpha backend. |
+
+## Lifecycle Modes
+
+### Collection sync
+
+- `reuse`: existing collection IDs are reused when available.
+- `refresh`: baseline, smoke, and contract collections are regenerated from the resolved spec and become the current/default collection pointers.
+- `version`: a release-scoped collection set is created or reused from the checked-out ref's state when available.
+
+### Spec sync
+
+- `update`: canonical behavior. The current spec in Spec Hub is updated from `spec-url`.
+- `version`: the action reuses the checked-out ref's `.postman/resources.yaml` spec mapping when present. If no mapping exists on the current ref, it creates a new release-scoped spec.
+
+### Release label derivation
+
+When versioned sync is requested and `release-label` is omitted, the action derives one using:
+
+1. explicit `release-label`
+2. Git tag name
+3. branch name or ref metadata
+
+If versioned sync is requested and no usable label can be derived, the run fails.
+
+### Ref-native state
+
+Current Postman asset state lives in `.postman/resources.yaml`.
+
+- `update` and `reuse` modes resolve current-state mappings from the checked-out ref.
+- `version` mode reuses only the checked-out ref's mappings; release history lives in git history and tags, not in a separate manifest file or repository variables.
+
+### Cloud spec-to-collection syncing
+
+After collections exist, bootstrap links them to the cloud specification and triggers a spec-side collection sync when `postman-access-token` is available.
+
+- `sync-examples: true` (default) enables example syncing in that relation setup.
+- `sync-examples: false` keeps the relation but disables example syncing.
+- If `postman-access-token` is missing, bootstrap warns and skips the cloud link/sync step.
+
+### Contract smoke monitoring
+
+This repo includes `.github/workflows/contract-smoke.yml`, a scheduled live contract check for the upstream Postman APIs used by bootstrap.
+
+Configure these repository secrets before enabling the workflow:
+
+- `SMOKE_ORG_API_KEY`
+- `SMOKE_ORG_ACCESS_TOKEN`
+- `SMOKE_NON_ORG_API_KEY`
+
+Configure this repository variable for the org-mode workspace creation check:
+
+- `SMOKE_WORKSPACE_TEAM_ID=132319`
+
+`132319` is the currently derived CSE sub-team ID under org `13347347`. The smoke job uses that value to verify `POST /workspaces` still accepts the explicit `teamId` payload required for org-mode tenants.
+
+## Versioning Examples
+
+Refresh the current collections in place while keeping one canonical spec:
+
+```yaml
+- uses: postman-cs/postman-bootstrap-action@v0
+  with:
+    project-name: core-payments
+    spec-url: https://example.com/openapi.yaml
+    collection-sync-mode: refresh
+    spec-sync-mode: update
+    postman-api-key: ${{ secrets.POSTMAN_API_KEY }}
+```
+
+Create a versioned spec and collection set on the checked-out ref:
+
+```yaml
+- uses: postman-cs/postman-bootstrap-action@v0
+  with:
+    project-name: core-payments
+    spec-url: https://example.com/openapi.yaml
+    collection-sync-mode: version
+    spec-sync-mode: version
+    release-label: v1.1.1
+    postman-api-key: ${{ secrets.POSTMAN_API_KEY }}
+```
 
 ### Obtaining `postman-api-key`
 

@@ -41,6 +41,34 @@ describe('open-alpha action contract', () => {
     expect(resolveInputs({}).integrationBackend).toBe('bifrost');
   });
 
+  it('defaults lifecycle controls in contract, manifest, and runtime', () => {
+    expect(openAlphaActionContract.inputs['sync-examples'].default).toBe('true');
+    expect(openAlphaActionContract.inputs['sync-examples'].allowedValues).toEqual([
+      'true',
+      'false'
+    ]);
+    expect(actionManifest.inputs['sync-examples'].default).toBe('true');
+    expect(resolveInputs({}).syncExamples).toBe(true);
+
+    expect(openAlphaActionContract.inputs['collection-sync-mode'].default).toBe('refresh');
+    expect(openAlphaActionContract.inputs['collection-sync-mode'].allowedValues).toEqual([
+      'reuse',
+      'refresh',
+      'version'
+    ]);
+    expect(actionManifest.inputs['collection-sync-mode'].default).toBe('refresh');
+    expect(resolveInputs({}).collectionSyncMode).toBe('refresh');
+
+    expect(openAlphaActionContract.inputs['spec-sync-mode'].default).toBe('update');
+    expect(openAlphaActionContract.inputs['spec-sync-mode'].allowedValues).toEqual([
+      'update',
+      'version'
+    ]);
+    expect(actionManifest.inputs['spec-sync-mode'].default).toBe('update');
+    expect(resolveInputs({}).specSyncMode).toBe('update');
+
+  });
+
   it('rejects unsupported integration backends during input resolution', () => {
     expect(() =>
       resolveInputs({
@@ -62,9 +90,6 @@ describe('open-alpha action contract', () => {
     expect(openAlphaActionContract.retainedBehavior).toContain('workspace creation');
     expect(openAlphaActionContract.retainedBehavior).toContain(
       'governance group assignment'
-    );
-    expect(openAlphaActionContract.retainedBehavior).toContain(
-      'GitHub repository variable persistence for downstream sync steps'
     );
     expect(openAlphaActionContract.removedBehavior).toContain('step mode');
     expect(openAlphaActionContract.removedBehavior).toContain(
