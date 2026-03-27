@@ -216,6 +216,9 @@ steps:
 | `postman-api-key` | | Required for all Postman asset operations. |
 | `postman-access-token` | | Required for governance assignment and canonical workspace validation during reruns. |
 | `integration-backend` | `bifrost` | Current public open-alpha backend. |
+| `folder-strategy` | `Paths` | Folder organization strategy for generated collections. `Paths` groups requests by URL path segments. `Tags` groups requests by OpenAPI tags. |
+| `nested-folder-hierarchy` | `false` | When `folder-strategy` is `Tags`, enables nested sub-folders within tag groups. Has no effect when `folder-strategy` is `Paths`. |
+| `request-name-source` | `Fallback` | Determines how requests are named in generated collections. `Fallback` uses the first available of summary, operationId, description, or URL. `URL` names requests directly from the path. |
 
 ## Lifecycle Modes
 
