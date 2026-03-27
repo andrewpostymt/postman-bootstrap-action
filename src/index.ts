@@ -35,6 +35,7 @@ export interface ResolvedInputs {
   postmanAccessToken?: string;
   integrationBackend: string;
   folderStrategy: string;
+  requestNameSource: string;
   githubRefName?: string;
   githubHeadRef?: string;
   githubRef?: string;
@@ -274,6 +275,10 @@ export function resolveInputs(
       getInput('folder-strategy', env) ??
       openAlphaActionContract.inputs['folder-strategy'].default ??
       'Paths',
+    requestNameSource:
+      getInput('request-name-source', env) ??
+      openAlphaActionContract.inputs['request-name-source'].default ??
+      'Fallback',
     githubRefName: env.GITHUB_REF_NAME,
     githubHeadRef: env.GITHUB_HEAD_REF,
     githubRef: env.GITHUB_REF,
@@ -357,7 +362,10 @@ export function readActionInputs(
       openAlphaActionContract.inputs['integration-backend'].default,
     INPUT_FOLDER_STRATEGY:
       optionalInput(actionCore, 'folder-strategy') ??
-      openAlphaActionContract.inputs['folder-strategy'].default
+      openAlphaActionContract.inputs['folder-strategy'].default,
+    INPUT_REQUEST_NAME_SOURCE:
+      optionalInput(actionCore, 'request-name-source') ??
+      openAlphaActionContract.inputs['request-name-source'].default
   });
 
   return inputs;
@@ -964,7 +972,8 @@ export async function runBootstrap(
           outputs['spec-id'],
           assetProjectName,
           '[Baseline]',
-          inputs.folderStrategy
+          inputs.folderStrategy,
+          inputs.requestNameSource
         );
       } else {
         dependencies.core.info(
@@ -976,7 +985,8 @@ export async function runBootstrap(
           outputs['spec-id'],
           assetProjectName,
           '[Smoke]',
-          inputs.folderStrategy
+          inputs.folderStrategy,
+          inputs.requestNameSource
         );
       } else {
         dependencies.core.info(
@@ -988,7 +998,8 @@ export async function runBootstrap(
           outputs['spec-id'],
           assetProjectName,
           '[Contract]',
-          inputs.folderStrategy
+          inputs.folderStrategy,
+          inputs.requestNameSource
         );
       } else {
         dependencies.core.info(

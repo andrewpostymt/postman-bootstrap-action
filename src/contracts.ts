@@ -114,6 +114,12 @@ export const openAlphaActionContract: BetaActionContract = {
       required: false,
       default: 'Paths',
       allowedValues: ['Paths', 'Tags', 'No Folders']
+    },
+    'request-name-source': {
+      description: 'Determines how requests are named in generated collections. Fallback uses summary, operationId, description, or URL in order.',
+      required: false,
+      default: 'Fallback',
+      allowedValues: ['Fallback', 'URL']
     }
   },
   outputs: {

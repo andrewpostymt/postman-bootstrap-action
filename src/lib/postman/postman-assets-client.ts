@@ -381,12 +381,13 @@ export class PostmanAssetsClient {
     specId: string,
     projectName: string,
     prefix: string,
-    folderStrategy: string
+    folderStrategy: string,
+    requestNameSource: string
   ): Promise<string> {
     const payload = {
       name: `${prefix} ${projectName}`,
       options: {
-        requestNameSource: 'Fallback',
+        requestNameSource,
         folderStrategy
       }
     };

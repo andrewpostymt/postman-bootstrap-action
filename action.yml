@@ -70,6 +70,10 @@ inputs:
     description: Folder organization strategy for generated collections (Paths, Tags, No Folders)
     required: false
     default: Paths
+  request-name-source:
+    description: Determines how requests are named in generated collections (Fallback, URL)
+    required: false
+    default: Fallback
 outputs:
   workspace-id:
     description: Postman workspace ID
