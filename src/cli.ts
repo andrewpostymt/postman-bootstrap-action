@@ -201,6 +201,7 @@ export function parseCliArgs(argv: string[], env: NodeJS.ProcessEnv = process.en
     'governance-mapping-json',
     'integration-backend',
     'folder-strategy',
+    'nested-folder-hierarchy',
     'request-name-source',
     'team-id',
     'workspace-team-id',

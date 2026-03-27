@@ -35,6 +35,7 @@ export interface ResolvedInputs {
   postmanAccessToken?: string;
   integrationBackend: string;
   folderStrategy: string;
+  nestedFolderHierarchy: boolean;
   requestNameSource: string;
   githubRefName?: string;
   githubHeadRef?: string;
@@ -275,6 +276,7 @@ export function resolveInputs(
       getInput('folder-strategy', env) ??
       openAlphaActionContract.inputs['folder-strategy'].default ??
       'Paths',
+    nestedFolderHierarchy: parseBooleanInput(getInput('nested-folder-hierarchy', env), false),
     requestNameSource:
       getInput('request-name-source', env) ??
       openAlphaActionContract.inputs['request-name-source'].default ??
@@ -363,6 +365,9 @@ export function readActionInputs(
     INPUT_FOLDER_STRATEGY:
       optionalInput(actionCore, 'folder-strategy') ??
       openAlphaActionContract.inputs['folder-strategy'].default,
+    INPUT_NESTED_FOLDER_HIERARCHY:
+      optionalInput(actionCore, 'nested-folder-hierarchy') ??
+      openAlphaActionContract.inputs['nested-folder-hierarchy'].default,
     INPUT_REQUEST_NAME_SOURCE:
       optionalInput(actionCore, 'request-name-source') ??
       openAlphaActionContract.inputs['request-name-source'].default
@@ -973,6 +978,7 @@ export async function runBootstrap(
           assetProjectName,
           '[Baseline]',
           inputs.folderStrategy,
+          inputs.nestedFolderHierarchy,
           inputs.requestNameSource
         );
       } else {
@@ -986,6 +992,7 @@ export async function runBootstrap(
           assetProjectName,
           '[Smoke]',
           inputs.folderStrategy,
+          inputs.nestedFolderHierarchy,
           inputs.requestNameSource
         );
       } else {
@@ -999,6 +1006,7 @@ export async function runBootstrap(
           assetProjectName,
           '[Contract]',
           inputs.folderStrategy,
+          inputs.nestedFolderHierarchy,
           inputs.requestNameSource
         );
       } else {

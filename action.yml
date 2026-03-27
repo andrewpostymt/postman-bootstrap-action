@@ -67,9 +67,13 @@ inputs:
     required: false
     default: bifrost
   folder-strategy:
-    description: Folder organization strategy for generated collections (Paths, Tags, No Folders)
+    description: Folder organization strategy for generated collections (Paths, Tags)
     required: false
     default: Paths
+  nested-folder-hierarchy:
+    description: Enables nested folder hierarchy when folder-strategy is Tags. Has no effect with Paths.
+    required: false
+    default: 'false'
   request-name-source:
     description: Determines how requests are named in generated collections (Fallback, URL)
     required: false

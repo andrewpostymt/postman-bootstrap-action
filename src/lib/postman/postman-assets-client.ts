@@ -382,13 +382,15 @@ export class PostmanAssetsClient {
     projectName: string,
     prefix: string,
     folderStrategy: string,
+    nestedFolderHierarchy: boolean,
     requestNameSource: string
   ): Promise<string> {
     const payload = {
       name: `${prefix} ${projectName}`,
       options: {
         requestNameSource,
-        folderStrategy
+        folderStrategy,
+        ...(folderStrategy === 'Tags' ? { nestedFolderHierarchy } : {})
       }
     };
 
