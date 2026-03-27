@@ -380,12 +380,14 @@ export class PostmanAssetsClient {
   async generateCollection(
     specId: string,
     projectName: string,
-    prefix: string
+    prefix: string,
+    folderStrategy: string
   ): Promise<string> {
     const payload = {
       name: `${prefix} ${projectName}`,
       options: {
-        requestNameSource: 'Fallback'
+        requestNameSource: 'Fallback',
+        folderStrategy
       }
     };
 

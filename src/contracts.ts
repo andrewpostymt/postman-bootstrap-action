@@ -108,6 +108,12 @@ export const openAlphaActionContract: BetaActionContract = {
       required: false,
       default: 'bifrost',
       allowedValues: ['bifrost']
+    },
+    'folder-strategy': {
+      description: 'Folder organization strategy for generated collections.',
+      required: false,
+      default: 'Paths',
+      allowedValues: ['Paths', 'Tags', 'No Folders']
     }
   },
   outputs: {
