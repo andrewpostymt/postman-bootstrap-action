@@ -168,7 +168,7 @@ Example GitLab CI job:
 
 ```yaml
 bootstrap:
-  image: node:20
+  image: node:22
   script:
     - npm install -g postman-bootstrap-action
     - postman-bootstrap --project-name core-payments --spec-url "$SPEC_URL" --postman-api-key "$POSTMAN_API_KEY" --postman-access-token "$POSTMAN_ACCESS_TOKEN" --result-json bootstrap-result.json --dotenv-path bootstrap.env
@@ -184,7 +184,7 @@ Example Bitbucket Pipelines step:
 pipelines:
   default:
     - step:
-        image: node:20
+        image: node:22
         script:
           - npm install -g postman-bootstrap-action
           - postman-bootstrap --project-name core-payments --spec-url "$SPEC_URL" --postman-api-key "$POSTMAN_API_KEY" --postman-access-token "$POSTMAN_ACCESS_TOKEN" --result-json bootstrap-result.json --dotenv-path bootstrap.env
