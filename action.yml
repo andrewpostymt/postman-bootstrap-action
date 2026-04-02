@@ -90,5 +90,5 @@ outputs:
   lint-summary-json:
     description: JSON summary of lint errors and warnings
 runs:
-  using: node22
+  using: node24
   main: dist/index.cjs
