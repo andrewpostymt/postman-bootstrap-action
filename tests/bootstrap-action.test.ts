@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { stringify as stringifyYaml } from 'yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { HttpError } from '../src/lib/http-error.js';
 import {
   lintSpecViaCli,
   normalizeSpecDocument,
@@ -369,7 +370,7 @@ describe('bootstrap action', () => {
     expect(postman.updateSpec).not.toHaveBeenCalled();
   });
 
-  it('reuses existing workspace, spec, and collection ids from explicit inputs', async () => {
+  it('reuses existing workspace, spec, and collection ids from explicit inputs in version mode', async () => {
     const { core, infos, outputs } = createCoreStub();
     const execStub = createExecStub();
     const ioStub = createIoStub();
@@ -395,7 +396,8 @@ describe('bootstrap action', () => {
         baselineCollectionId: 'col-baseline-existing',
         smokeCollectionId: 'col-smoke-existing',
         contractCollectionId: 'col-contract-existing',
-        collectionSyncMode: 'reuse'
+        collectionSyncMode: 'version',
+        releaseLabel: 'v1'
       }),
       {
         core,
@@ -433,17 +435,38 @@ describe('bootstrap action', () => {
   });
 
   it('refresh mode regenerates collections even when ids already exist', async () => {
-    const { core } = createCoreStub();
+    const { core, infos } = createCoreStub();
     const execStub = createExecStub();
     const ioStub = createIoStub();
     const generatedIds = ['col-baseline-refresh', 'col-smoke-refresh', 'col-contract-refresh'];
+    const fetchedCollections = new Map(
+      generatedIds.map((id, index) => [
+        id,
+        {
+          info: {
+            name: ['[Baseline]', '[Smoke]', '[Contract]'][index]
+          },
+          item: [
+            {
+              name: 'Generated request',
+              request: {
+                method: 'GET',
+                url: 'https://example.test'
+              }
+            }
+          ]
+        }
+      ])
+    );
     const postman = {
       addAdminsToWorkspace: vi.fn().mockResolvedValue(undefined),
       createWorkspace: vi.fn(),
+      deleteCollection: vi.fn().mockResolvedValue(undefined),
       findWorkspacesByName: vi.fn().mockResolvedValue([]),
       generateCollection: vi
         .fn()
         .mockImplementation(async () => generatedIds.shift() || 'col-fallback'),
+      getCollection: vi.fn().mockImplementation(async (uid: string) => fetchedCollections.get(uid)),
       getAutoDerivedTeamId: vi.fn().mockResolvedValue('12345'),
       getTeams: vi.fn().mockResolvedValue([]),
       getWorkspaceGitRepoUrl: vi.fn().mockResolvedValue(null),
@@ -451,6 +474,7 @@ describe('bootstrap action', () => {
       inviteRequesterToWorkspace: vi.fn().mockResolvedValue(undefined),
       tagCollection: vi.fn().mockResolvedValue(undefined),
       uploadSpec: vi.fn(),
+      updateCollection: vi.fn().mockResolvedValue(undefined),
       updateSpec: vi.fn().mockResolvedValue(undefined),
       getSpecContent: vi.fn().mockResolvedValue('openapi: 3.1.0')
     };
@@ -475,11 +499,172 @@ describe('bootstrap action', () => {
     );
 
     expect(postman.generateCollection).toHaveBeenCalledTimes(3);
+    expect(postman.updateCollection).toHaveBeenNthCalledWith(
+      1,
+      'col-baseline-existing',
+      expect.any(Object)
+    );
+    expect(postman.updateCollection).toHaveBeenNthCalledWith(
+      2,
+      'col-smoke-existing',
+      expect.any(Object)
+    );
+    expect(postman.updateCollection).toHaveBeenNthCalledWith(
+      3,
+      'col-contract-existing',
+      expect.any(Object)
+    );
+    expect(postman.deleteCollection).toHaveBeenCalledWith('col-baseline-refresh');
+    expect(postman.deleteCollection).toHaveBeenCalledWith('col-smoke-refresh');
+    expect(postman.deleteCollection).toHaveBeenCalledWith('col-contract-refresh');
     expect(result).toMatchObject({
-      'baseline-collection-id': 'col-baseline-refresh',
-      'smoke-collection-id': 'col-smoke-refresh',
-      'contract-collection-id': 'col-contract-refresh'
+      'baseline-collection-id': 'col-baseline-existing',
+      'smoke-collection-id': 'col-smoke-existing',
+      'contract-collection-id': 'col-contract-existing'
     });
+    expect(infos).toContain(
+      'Refreshed existing [Smoke] collection col-smoke-existing with temporary collection col-smoke-refresh'
+    );
+  });
+
+  it('refresh mode promotes generated collections when no tracked ids exist', async () => {
+    const { core, warnings } = createCoreStub();
+    const execStub = createExecStub();
+    const ioStub = createIoStub();
+    const generatedIds = ['col-baseline-new', 'col-smoke-new', 'col-contract-new'];
+    const postman = {
+      addAdminsToWorkspace: vi.fn().mockResolvedValue(undefined),
+      createWorkspace: vi.fn(),
+      deleteCollection: vi.fn().mockResolvedValue(undefined),
+      findWorkspacesByName: vi.fn().mockResolvedValue([]),
+      generateCollection: vi
+        .fn()
+        .mockImplementation(async () => generatedIds.shift() || 'col-fallback'),
+      getAutoDerivedTeamId: vi.fn().mockResolvedValue('12345'),
+      getTeams: vi.fn().mockResolvedValue([]),
+      getWorkspaceGitRepoUrl: vi.fn().mockResolvedValue(null),
+      injectTests: vi.fn().mockResolvedValue(undefined),
+      inviteRequesterToWorkspace: vi.fn().mockResolvedValue(undefined),
+      tagCollection: vi.fn().mockResolvedValue(undefined),
+      uploadSpec: vi.fn(),
+      updateCollection: vi.fn().mockResolvedValue(undefined),
+      updateSpec: vi.fn().mockResolvedValue(undefined),
+      getSpecContent: vi.fn().mockResolvedValue('openapi: 3.1.0')
+    };
+
+    const result = await runBootstrap(
+      createInputs({
+        workspaceId: 'ws-existing',
+        specId: 'spec-existing',
+        collectionSyncMode: 'refresh'
+      }),
+      {
+        core,
+        exec: execStub,
+        io: ioStub,
+        postman,
+        specFetcher: vi.fn<typeof fetch>().mockResolvedValue(
+          new Response('openapi: 3.1.0', { status: 200 })
+        )
+      }
+    );
+
+    expect(postman.updateCollection).not.toHaveBeenCalled();
+    expect(postman.deleteCollection).not.toHaveBeenCalled();
+    expect(
+      warnings.some((warning) => warning.includes('deleteCollection is unavailable'))
+    ).toBe(false);
+    expect(result).toMatchObject({
+      'baseline-collection-id': 'col-baseline-new',
+      'smoke-collection-id': 'col-smoke-new',
+      'contract-collection-id': 'col-contract-new'
+    });
+  });
+
+  it('refresh mode falls back to newly generated collections when tracked targets are stale', async () => {
+    const { core, warnings } = createCoreStub();
+    const execStub = createExecStub();
+    const ioStub = createIoStub();
+    const generatedIds = ['col-baseline-fresh', 'col-smoke-fresh', 'col-contract-fresh'];
+    const fetchedCollections = new Map(
+      generatedIds.map((id, index) => [
+        id,
+        {
+          info: {
+            name: ['[Baseline]', '[Smoke]', '[Contract]'][index]
+          },
+          item: [
+            {
+              name: 'Generated request',
+              request: {
+                method: 'GET',
+                url: 'https://example.test'
+              }
+            }
+          ]
+        }
+      ])
+    );
+    const postman = {
+      addAdminsToWorkspace: vi.fn().mockResolvedValue(undefined),
+      createWorkspace: vi.fn(),
+      deleteCollection: vi.fn().mockResolvedValue(undefined),
+      findWorkspacesByName: vi.fn().mockResolvedValue([]),
+      generateCollection: vi
+        .fn()
+        .mockImplementation(async () => generatedIds.shift() || 'col-fallback'),
+      getCollection: vi.fn().mockImplementation(async (uid: string) => fetchedCollections.get(uid)),
+      getAutoDerivedTeamId: vi.fn().mockResolvedValue('12345'),
+      getTeams: vi.fn().mockResolvedValue([]),
+      getWorkspaceGitRepoUrl: vi.fn().mockResolvedValue(null),
+      injectTests: vi.fn().mockResolvedValue(undefined),
+      inviteRequesterToWorkspace: vi.fn().mockResolvedValue(undefined),
+      tagCollection: vi.fn().mockResolvedValue(undefined),
+      uploadSpec: vi.fn(),
+      updateCollection: vi.fn().mockRejectedValue(
+        new HttpError({
+          method: 'PUT',
+          url: 'https://api.getpostman.com/collections/stale',
+          status: 404,
+          statusText: 'Not Found',
+          responseBody: '{"error":{"message":"missing"}}'
+        })
+      ),
+      updateSpec: vi.fn().mockResolvedValue(undefined),
+      getSpecContent: vi.fn().mockResolvedValue('openapi: 3.1.0')
+    };
+
+    const result = await runBootstrap(
+      createInputs({
+        workspaceId: 'ws-existing',
+        specId: 'spec-existing',
+        baselineCollectionId: 'col-baseline-stale',
+        smokeCollectionId: 'col-smoke-stale',
+        contractCollectionId: 'col-contract-stale',
+        collectionSyncMode: 'refresh'
+      }),
+      {
+        core,
+        exec: execStub,
+        io: ioStub,
+        postman,
+        specFetcher: vi.fn<typeof fetch>().mockResolvedValue(
+          new Response('openapi: 3.1.0', { status: 200 })
+        )
+      }
+    );
+
+    expect(postman.deleteCollection).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      'baseline-collection-id': 'col-baseline-fresh',
+      'smoke-collection-id': 'col-smoke-fresh',
+      'contract-collection-id': 'col-contract-fresh'
+    });
+    expect(
+      warnings.some((warning) =>
+        warning.includes('Existing [Smoke] collection col-smoke-stale was not found during refresh')
+      )
+    ).toBe(true);
   });
 
   it('version mode reuses the current ref resources.yaml mappings instead of a release manifest', async () => {
@@ -647,7 +832,7 @@ describe('bootstrap action', () => {
     expect(result['spec-id']).toBe('spec-v112');
   });
 
-  it('reuses .postman/resources.yaml for reruns before creating new assets', async () => {
+  it('reuses .postman/resources.yaml for version reruns before creating new assets', async () => {
     const { core } = createCoreStub();
     const execStub = createExecStub();
     const ioStub = createIoStub();
@@ -682,7 +867,9 @@ describe('bootstrap action', () => {
       })
     );
 
-    const result = await runBootstrap(createInputs({ collectionSyncMode: 'reuse' }), {
+    const result = await runBootstrap(
+      createInputs({ collectionSyncMode: 'version', releaseLabel: 'v1' }),
+      {
       core,
       exec: execStub,
       io: ioStub,
@@ -690,7 +877,8 @@ describe('bootstrap action', () => {
       specFetcher: vi.fn<typeof fetch>().mockResolvedValue(
         new Response('openapi: 3.1.0', { status: 200 })
       )
-    });
+      }
+    );
 
     expect(postman.createWorkspace).not.toHaveBeenCalled();
     expect(postman.uploadSpec).not.toHaveBeenCalled();
