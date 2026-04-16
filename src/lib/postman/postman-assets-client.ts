@@ -397,12 +397,17 @@ export class PostmanAssetsClient {
   async generateCollection(
     specId: string,
     projectName: string,
-    prefix: string
+    prefix: string,
+    folderStrategy: string,
+    nestedFolderHierarchy: boolean,
+    requestNameSource: string
   ): Promise<string> {
     const payload = {
       name: `${prefix} ${projectName}`,
       options: {
-        requestNameSource: 'Fallback'
+        requestNameSource,
+        folderStrategy,
+        ...(folderStrategy === 'Tags' ? { nestedFolderHierarchy } : {})
       }
     };
 
