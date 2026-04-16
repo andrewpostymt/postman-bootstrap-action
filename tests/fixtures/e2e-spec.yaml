@@ -3,6 +3,12 @@ info:
   title: E2E Test API
   version: "1.0.0"
   description: Minimal OpenAPI spec used for E2E testing the postman-bootstrap-action.
+  contact:
+    name: Postman CSE
+    email: cse@postman.com
+servers:
+  - url: https://api.example.com/v1
+    description: Test server
 paths:
   /pets:
     get:
