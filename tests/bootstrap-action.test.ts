@@ -73,6 +73,9 @@ function createInputs(overrides: Partial<ResolvedInputs> = {}): ResolvedInputs {
     postmanApiKey: 'pmak-test',
     postmanAccessToken: 'postman-access-token',
     integrationBackend: 'bifrost',
+    folderStrategy: 'Paths',
+    nestedFolderHierarchy: false,
+    requestNameSource: 'Fallback',
     githubRefName: undefined,
     githubHeadRef: undefined,
     githubRef: undefined,
@@ -1215,3 +1218,39 @@ describe('lintSpecViaCli', () => {
       })
     ).rejects.toThrow('workspace-team-id must be a numeric sub-team ID');
   });
+
+it('forwards folderStrategy, nestedFolderHierarchy, and requestNameSource to generateCollection', async () => {
+  const { core } = createCoreStub();
+  const execStub = createExecStub();
+  const ioStub = createIoStub();
+  const postman = {
+    addAdminsToWorkspace: vi.fn().mockResolvedValue(undefined),
+    createWorkspace: vi.fn().mockResolvedValue({ id: 'ws-123' }),
+    findWorkspacesByName: vi.fn().mockResolvedValue([]),
+    generateCollection: vi.fn().mockResolvedValue('col-id'),
+    getAutoDerivedTeamId: vi.fn().mockResolvedValue('12345'),
+    getTeams: vi.fn().mockResolvedValue([]),
+    getWorkspaceGitRepoUrl: vi.fn().mockResolvedValue(null),
+    injectTests: vi.fn().mockResolvedValue(undefined),
+    inviteRequesterToWorkspace: vi.fn().mockResolvedValue(undefined),
+    tagCollection: vi.fn().mockResolvedValue(undefined),
+    uploadSpec: vi.fn().mockResolvedValue('spec-123'),
+    updateSpec: vi.fn().mockResolvedValue(undefined),
+    getSpecContent: vi.fn().mockResolvedValue('openapi: 3.1.0')
+  };
+  const specFetcher = vi.fn<typeof fetch>().mockResolvedValue(
+    new Response('openapi: 3.1.0', { status: 200 })
+  );
+
+  await runBootstrap(
+    createInputs({ folderStrategy: 'Tags', nestedFolderHierarchy: true, requestNameSource: 'URL' }),
+    { core, exec: execStub, io: ioStub, postman, specFetcher }
+  );
+
+  expect(postman.generateCollection).toHaveBeenCalledTimes(3);
+  for (const call of postman.generateCollection.mock.calls) {
+    expect(call[3]).toBe('Tags');
+    expect(call[4]).toBe(true);
+    expect(call[5]).toBe('URL');
+  }
+});

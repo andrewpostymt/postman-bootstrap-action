@@ -265,4 +265,81 @@ describe('PostmanAssetsClient', () => {
 
     await expect(client.getTeams()).rejects.toThrow();
   });
+
+  it('generates a collection with Paths strategy and omits nestedFolderHierarchy from payload', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({ collection: { id: 'col-123' } })
+    );
+    const client = new PostmanAssetsClient({ apiKey: 'pmak-test', fetchImpl });
+
+    await expect(
+      client.generateCollection('spec-123', 'My API', '[Baseline]', 'Paths', false, 'Fallback')
+    ).resolves.toBe('col-123');
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.getpostman.com/specs/spec-123/generations/collection',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: '[Baseline] My API',
+          options: {
+            requestNameSource: 'Fallback',
+            folderStrategy: 'Paths'
+          }
+        })
+      })
+    );
+  });
+
+  it('generates a collection with Tags strategy and includes nestedFolderHierarchy in payload', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({ collection: { id: 'col-456' } })
+    );
+    const client = new PostmanAssetsClient({ apiKey: 'pmak-test', fetchImpl });
+
+    await expect(
+      client.generateCollection('spec-456', 'My API', '[Smoke]', 'Tags', true, 'URL')
+    ).resolves.toBe('col-456');
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.getpostman.com/specs/spec-456/generations/collection',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: '[Smoke] My API',
+          options: {
+            requestNameSource: 'URL',
+            folderStrategy: 'Tags',
+            nestedFolderHierarchy: true
+          }
+        })
+      })
+    );
+  });
+
+  it('generates a collection with Tags strategy and nestedFolderHierarchy: false', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      jsonResponse({ collection: { id: 'col-789' } })
+    );
+    const client = new PostmanAssetsClient({ apiKey: 'pmak-test', fetchImpl });
+
+    await expect(
+      client.generateCollection('spec-789', 'My API', '[Contract]', 'Tags', false, 'Fallback')
+    ).resolves.toBe('col-789');
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.getpostman.com/specs/spec-789/generations/collection',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: '[Contract] My API',
+          options: {
+            requestNameSource: 'Fallback',
+            folderStrategy: 'Tags',
+            nestedFolderHierarchy: false
+          }
+        })
+      })
+    );
+  });
 });

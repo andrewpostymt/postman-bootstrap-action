@@ -69,6 +69,26 @@ describe('open-alpha action contract', () => {
     ).toThrow(/Unsupported integration-backend/);
   });
 
+  it('defaults folder-strategy to Paths in contract, manifest, and runtime', () => {
+    expect(openAlphaActionContract.inputs['folder-strategy'].default).toBe('Paths');
+    expect(openAlphaActionContract.inputs['folder-strategy'].allowedValues).toEqual(['Paths', 'Tags']);
+    expect(actionManifest.inputs['folder-strategy'].default).toBe('Paths');
+    expect(resolveInputs({}).folderStrategy).toBe('Paths');
+  });
+
+  it('defaults request-name-source to Fallback in contract, manifest, and runtime', () => {
+    expect(openAlphaActionContract.inputs['request-name-source'].default).toBe('Fallback');
+    expect(openAlphaActionContract.inputs['request-name-source'].allowedValues).toEqual(['Fallback', 'URL']);
+    expect(actionManifest.inputs['request-name-source'].default).toBe('Fallback');
+    expect(resolveInputs({}).requestNameSource).toBe('Fallback');
+  });
+
+  it('defaults nested-folder-hierarchy to false in contract, manifest, and runtime', () => {
+    expect(openAlphaActionContract.inputs['nested-folder-hierarchy'].default).toBe('false');
+    expect(actionManifest.inputs['nested-folder-hierarchy'].default).toBe('false');
+    expect(resolveInputs({}).nestedFolderHierarchy).toBe(false);
+  });
+
   it('rejects non-HTTPS spec URLs', () => {
     expect(() =>
       resolveInputs({

@@ -28786,6 +28786,23 @@ var openAlphaActionContract = {
       required: false,
       default: "bifrost",
       allowedValues: ["bifrost"]
+    },
+    "folder-strategy": {
+      description: "Folder organization strategy for generated collections.",
+      required: false,
+      default: "Paths",
+      allowedValues: ["Paths", "Tags"]
+    },
+    "nested-folder-hierarchy": {
+      description: "When folder-strategy is Tags, enables nested folder hierarchy. Has no effect when folder-strategy is Paths.",
+      required: false,
+      default: "false"
+    },
+    "request-name-source": {
+      description: "Determines how requests are named in generated collections. Fallback uses summary, operationId, description, or URL in order.",
+      required: false,
+      default: "Fallback",
+      allowedValues: ["Fallback", "URL"]
     }
   },
   outputs: {
@@ -29301,11 +29318,13 @@ var PostmanAssetsClient = class {
       return void 0;
     }
   }
-  async generateCollection(specId, projectName, prefix) {
+  async generateCollection(specId, projectName, prefix, folderStrategy, nestedFolderHierarchy, requestNameSource) {
     const payload = {
       name: `${prefix} ${projectName}`,
       options: {
-        requestNameSource: "Fallback"
+        requestNameSource,
+        folderStrategy,
+        ...folderStrategy === "Tags" ? { nestedFolderHierarchy } : {}
       }
     };
     const extractUid = (data) => data?.details?.resources?.[0]?.id || data?.collection?.id || data?.collection?.uid || data?.resource?.uid || data?.resource?.id || void 0;
@@ -29992,6 +30011,13 @@ function requireInput(actionCore, name) {
 function optionalInput(actionCore, name) {
   return normalizeInputValue(actionCore.getInput(name));
 }
+function parseBooleanInput(value, defaultValue) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return defaultValue;
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  return defaultValue;
+}
 function parseCollectionSyncMode(value) {
   if (value === "reuse" || value === "version") {
     return value;
@@ -30051,6 +30077,9 @@ function resolveInputs(env = process.env) {
     postmanApiKey: getInput("postman-api-key", env) ?? "",
     postmanAccessToken: getInput("postman-access-token", env),
     integrationBackend,
+    folderStrategy: getInput("folder-strategy", env) ?? openAlphaActionContract.inputs["folder-strategy"].default ?? "Paths",
+    nestedFolderHierarchy: parseBooleanInput(getInput("nested-folder-hierarchy", env), false),
+    requestNameSource: getInput("request-name-source", env) ?? openAlphaActionContract.inputs["request-name-source"].default ?? "Fallback",
     githubRefName: env.GITHUB_REF_NAME,
     githubHeadRef: env.GITHUB_HEAD_REF,
     githubRef: env.GITHUB_REF,
@@ -30112,7 +30141,10 @@ function readActionInputs(actionCore) {
     INPUT_GOVERNANCE_MAPPING_JSON: optionalInput(actionCore, "governance-mapping-json") ?? openAlphaActionContract.inputs["governance-mapping-json"].default,
     INPUT_POSTMAN_API_KEY: postmanApiKey,
     INPUT_POSTMAN_ACCESS_TOKEN: postmanAccessToken,
-    INPUT_INTEGRATION_BACKEND: optionalInput(actionCore, "integration-backend") ?? openAlphaActionContract.inputs["integration-backend"].default
+    INPUT_INTEGRATION_BACKEND: optionalInput(actionCore, "integration-backend") ?? openAlphaActionContract.inputs["integration-backend"].default,
+    INPUT_FOLDER_STRATEGY: optionalInput(actionCore, "folder-strategy") ?? openAlphaActionContract.inputs["folder-strategy"].default,
+    INPUT_NESTED_FOLDER_HIERARCHY: optionalInput(actionCore, "nested-folder-hierarchy") ?? openAlphaActionContract.inputs["nested-folder-hierarchy"].default,
+    INPUT_REQUEST_NAME_SOURCE: optionalInput(actionCore, "request-name-source") ?? openAlphaActionContract.inputs["request-name-source"].default
   });
   return inputs;
 }
@@ -30601,7 +30633,10 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
         outputs["baseline-collection-id"] = await dependencies.postman.generateCollection(
           outputs["spec-id"],
           assetProjectName,
-          "[Baseline]"
+          "[Baseline]",
+          inputs.folderStrategy,
+          inputs.nestedFolderHierarchy,
+          inputs.requestNameSource
         );
       } else {
         dependencies.core.info(
@@ -30612,7 +30647,10 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
         outputs["smoke-collection-id"] = await dependencies.postman.generateCollection(
           outputs["spec-id"],
           assetProjectName,
-          "[Smoke]"
+          "[Smoke]",
+          inputs.folderStrategy,
+          inputs.nestedFolderHierarchy,
+          inputs.requestNameSource
         );
       } else {
         dependencies.core.info(
@@ -30623,7 +30661,10 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
         outputs["contract-collection-id"] = await dependencies.postman.generateCollection(
           outputs["spec-id"],
           assetProjectName,
-          "[Contract]"
+          "[Contract]",
+          inputs.folderStrategy,
+          inputs.nestedFolderHierarchy,
+          inputs.requestNameSource
         );
       } else {
         dependencies.core.info(
