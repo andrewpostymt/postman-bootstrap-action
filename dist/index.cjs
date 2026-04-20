@@ -28724,11 +28724,17 @@ var openAlphaActionContract = {
       description: "Existing contract collection ID.",
       required: false
     },
+    "sync-examples": {
+      description: "Whether linked spec/collection relations should enable example syncing.",
+      required: false,
+      default: "true",
+      allowedValues: ["true", "false"]
+    },
     "collection-sync-mode": {
-      description: "Collection lifecycle policy: reuse existing collections, refresh them from the latest spec, or version them by release label.",
+      description: "Collection lifecycle policy: refresh tracked collections from the latest spec or version them by release label.",
       required: false,
       default: "refresh",
-      allowedValues: ["reuse", "refresh", "version"]
+      allowedValues: ["refresh", "version"]
     },
     "spec-sync-mode": {
       description: "Spec lifecycle policy: update the canonical spec or create/reuse a versioned spec for the resolved release label.",
@@ -29024,6 +29030,12 @@ async function retry(operation, options = {}) {
 }
 
 // src/lib/postman/postman-assets-client.ts
+function asRecord(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value;
+}
 function normalizeGitRepoUrl(url) {
   const raw = String(url || "").trim();
   if (!raw) return "";
@@ -29096,18 +29108,18 @@ var PostmanAssetsClient = class {
       if (user && typeof user === "object" && "teamId" in user && user.teamId) {
         return String(user.teamId);
       }
-    } catch (e) {
+    } catch {
     }
     return void 0;
   }
   async getTeams() {
     const data = await this.request("/teams");
     const teams = data?.data ?? [];
-    return Array.isArray(teams) ? teams.filter((t) => t?.id && t?.name).map((t) => ({
-      id: Number(t.id),
-      name: String(t.name),
-      handle: String(t.handle || ""),
-      ...t.organizationId != null ? { organizationId: Number(t.organizationId) } : {}
+    return Array.isArray(teams) ? teams.map((entry) => asRecord(entry)).filter((team) => Boolean(team?.id && team?.name)).map((team) => ({
+      id: Number(team.id),
+      name: String(team.name),
+      handle: String(team.handle || ""),
+      ...team.organizationId != null ? { organizationId: Number(team.organizationId) } : {}
     })) : [];
   }
   async request(path, init = {}) {
@@ -29157,17 +29169,20 @@ var PostmanAssetsClient = class {
       } catch (err) {
         if (err instanceof Error && err.message.includes("Only personal workspaces")) {
           throw new Error(
-            "Workspace creation failed: This may be an Org-mode account that requires a workspace-team-id input. The Postman API does not allow creating team workspaces at the organization level. Use the workspace-team-id input to specify which sub-team should own this workspace."
+            "Workspace creation failed: This may be an Org-mode account that requires a workspace-team-id input. The Postman API does not allow creating team workspaces at the organization level. Use the workspace-team-id input to specify which sub-team should own this workspace.",
+            { cause: err }
           );
         }
         throw err;
       }
-      const workspaceId = created?.workspace?.id;
+      const createdWorkspace = asRecord(created?.workspace);
+      const workspaceId = String(createdWorkspace?.id || "").trim();
       if (!workspaceId) {
         throw new Error("Workspace create did not return an id");
       }
       const workspace = await this.request(`/workspaces/${workspaceId}`);
-      if (workspace?.workspace?.visibility !== "team") {
+      const workspaceDetails = asRecord(workspace?.workspace);
+      if (workspaceDetails?.visibility !== "team") {
         await this.request(`/workspaces/${workspaceId}`, {
           method: "PUT",
           body: JSON.stringify(payload)
@@ -29185,10 +29200,10 @@ var PostmanAssetsClient = class {
   async listWorkspaces() {
     const data = await this.request("/workspaces");
     const workspaces = data?.workspaces ?? [];
-    return Array.isArray(workspaces) ? workspaces.filter((w) => w?.id && w?.name).map((w) => ({
-      id: String(w.id),
-      name: String(w.name),
-      type: String(w.type ?? "team")
+    return Array.isArray(workspaces) ? workspaces.map((entry) => asRecord(entry)).filter((workspace) => Boolean(workspace?.id && workspace?.name)).map((workspace) => ({
+      id: String(workspace.id),
+      name: String(workspace.name),
+      type: String(workspace.type ?? "team")
     })) : [];
   }
   async findWorkspacesByName(name) {
@@ -29228,7 +29243,8 @@ var PostmanAssetsClient = class {
   }
   async inviteRequesterToWorkspace(workspaceId, email) {
     const users = await this.request("/users");
-    const user = users?.data?.find((entry) => entry.email === email);
+    const userList = Array.isArray(users?.data) ? users.data : [];
+    const user = userList.map((entry) => asRecord(entry)).find((entry) => entry?.email === email);
     if (!user?.id) {
       return;
     }
@@ -29287,7 +29303,8 @@ var PostmanAssetsClient = class {
     }, { maxAttempts: 3, delayMs: 2e3 });
     return specId;
   }
-  async updateSpec(specId, specContent, _workspaceId) {
+  async updateSpec(specId, specContent, workspaceId) {
+    void workspaceId;
     await this.request(`/specs/${specId}/files/index.yaml`, {
       method: "PATCH",
       body: JSON.stringify({ content: specContent })
@@ -29308,14 +29325,24 @@ var PostmanAssetsClient = class {
         requestNameSource: "Fallback"
       }
     };
-    const extractUid = (data) => data?.details?.resources?.[0]?.id || data?.collection?.id || data?.collection?.uid || data?.resource?.uid || data?.resource?.id || void 0;
+    const extractUid = (data) => {
+      const root = asRecord(data);
+      const details = asRecord(root?.details);
+      const resources = Array.isArray(details?.resources) ? details.resources : [];
+      const firstResource = asRecord(resources[0]);
+      const collection = asRecord(root?.collection);
+      const resource = asRecord(root?.resource);
+      return String(
+        firstResource?.id ?? collection?.id ?? collection?.uid ?? resource?.uid ?? resource?.id ?? ""
+      ).trim() || void 0;
+    };
     return retry(
       async () => {
         const maxLockedRetries = 5;
-        let response = null;
+        let generationResponse;
         for (let lockedAttempt = 0; ; lockedAttempt += 1) {
           try {
-            response = await this.request(`/specs/${specId}/generations/collection`, {
+            generationResponse = await this.request(`/specs/${specId}/generations/collection`, {
               method: "POST",
               body: JSON.stringify(payload)
             });
@@ -29333,13 +29360,17 @@ var PostmanAssetsClient = class {
             });
           }
         }
-        const directUid = extractUid(response);
+        if (!generationResponse) {
+          throw new Error(`Collection generation request did not return a response for ${prefix}`);
+        }
+        const directUid = extractUid(generationResponse);
         if (directUid) {
           return directUid;
         }
-        let taskUrl = response?.url || response?.task_url || response?.taskUrl || response?.links?.task;
+        let taskUrl = String(generationResponse?.url ?? "") || String(generationResponse?.task_url ?? "") || String(generationResponse?.taskUrl ?? "") || String(asRecord(generationResponse?.links)?.task ?? "");
         if (!taskUrl) {
-          const taskId = response?.taskId || response?.task?.id || response?.id;
+          const task = asRecord(generationResponse?.task);
+          const taskId = generationResponse?.taskId || task?.id || generationResponse?.id;
           if (!taskId) {
             throw new Error(
               `Collection generation did not return a task URL or ID for ${prefix}`
@@ -29352,7 +29383,9 @@ var PostmanAssetsClient = class {
             setTimeout(resolve, 2e3);
           });
           const task = await this.request(taskUrl);
-          const status = String(task?.status || task?.task?.status || "").toLowerCase();
+          const taskRecord = asRecord(task);
+          const taskNested = asRecord(taskRecord?.task);
+          const status = String(taskRecord?.status || taskNested?.status || "").toLowerCase();
           if (status === "completed") {
             const taskUid = extractUid(task);
             if (!taskUid) {
@@ -29388,7 +29421,7 @@ var PostmanAssetsClient = class {
   }
   async injectTests(collectionUid, type) {
     const collectionResponse = await this.request(`/collections/${collectionUid}`);
-    const collection = collectionResponse?.collection;
+    const collection = asRecord(collectionResponse?.collection);
     if (!collection) {
       throw new Error(`Failed to fetch collection ${collectionUid}`);
     }
@@ -29527,7 +29560,8 @@ var PostmanAssetsClient = class {
         return;
       }
       if (itemNode.request) {
-        itemNode.event = (itemNode.event || []).filter(
+        const events = Array.isArray(itemNode.event) ? itemNode.event : [];
+        itemNode.event = events.filter(
           (entry) => entry.listen !== "test"
         );
         itemNode.event.push({
@@ -29539,11 +29573,12 @@ var PostmanAssetsClient = class {
         });
       }
       if (Array.isArray(itemNode.item)) {
-        itemNode.item.forEach(injectScripts);
+        itemNode.item.map((entry) => asRecord(entry)).filter((entry) => Boolean(entry)).forEach(injectScripts);
       }
     };
     if (Array.isArray(collection.item)) {
-      collection.item = collection.item.filter(
+      const collectionItems = collection.item;
+      collection.item = collectionItems.filter(
         (entry) => entry.name !== "00 - Resolve Secrets"
       );
       collection.item.forEach(injectScripts);
@@ -29566,7 +29601,8 @@ var PostmanAssetsClient = class {
         }
       })
     });
-    const uid = String(response?.environment?.uid || "").trim();
+    const environment = asRecord(response?.environment);
+    const uid = String(environment?.uid || "").trim();
     if (!uid) {
       throw new Error("Environment create did not return a UID");
     }
@@ -29598,7 +29634,8 @@ var PostmanAssetsClient = class {
         }
       })
     });
-    const uid = String(response?.monitor?.uid || "").trim();
+    const monitor = asRecord(response?.monitor);
+    const uid = String(monitor?.uid || "").trim();
     if (!uid) {
       throw new Error("Monitor create did not return a UID");
     }
@@ -29616,18 +29653,38 @@ var PostmanAssetsClient = class {
         }
       })
     });
-    const uid = String(response?.mock?.uid || "").trim();
+    const mock = asRecord(response?.mock);
+    const mockConfig = asRecord(mock?.config);
+    const uid = String(mock?.uid || "").trim();
     if (!uid) {
       throw new Error("Mock create did not return a UID");
     }
     return {
       uid,
-      url: String(response?.mock?.mockUrl || "").trim() || String(response?.mock?.config?.serverResponseId || "").trim()
+      url: String(mock?.mockUrl || "").trim() || String(mockConfig?.serverResponseId || "").trim()
     };
   }
   async getCollection(uid) {
     const response = await this.request(`/collections/${uid}`);
     return response?.collection;
+  }
+  async updateCollection(collectionUid, collection) {
+    await this.request(`/collections/${collectionUid}`, {
+      method: "PUT",
+      body: JSON.stringify({ collection })
+    });
+  }
+  async deleteCollection(collectionUid) {
+    try {
+      await this.request(`/collections/${collectionUid}`, {
+        method: "DELETE"
+      });
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404) {
+        return;
+      }
+      throw error;
+    }
   }
   async getEnvironment(uid) {
     const response = await this.request(`/environments/${uid}`);
@@ -29635,7 +29692,7 @@ var PostmanAssetsClient = class {
   }
   async getEnvironments(workspaceId) {
     const response = await this.request(`/environments?workspace=${workspaceId}`);
-    return response?.environments || [];
+    return Array.isArray(response?.environments) ? response.environments : [];
   }
 };
 
@@ -29654,6 +29711,26 @@ var BifrostInternalIntegrationAdapter = class {
     this.workerBaseUrl = String(
       options.workerBaseUrl || "https://catalog-admin.postman-account2009.workers.dev"
     ).replace(/\/+$/, "");
+  }
+  async proxyRequest(service, method, requestPath, body) {
+    const url = "https://bifrost-premium-https-v4.gw.postman.com/ws/proxy";
+    const headers = {
+      "Content-Type": "application/json",
+      "x-access-token": this.accessToken
+    };
+    if (this.teamId) {
+      headers["x-entity-team-id"] = this.teamId;
+    }
+    return this.fetchImpl(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        service,
+        method,
+        path: requestPath,
+        ...body !== void 0 ? { body } : {}
+      })
+    });
   }
   async assignWorkspaceToGovernanceGroup(workspaceId, domain, mappingJson) {
     let mapping;
@@ -29748,14 +29825,6 @@ var BifrostInternalIntegrationAdapter = class {
     }
   }
   async connectWorkspaceToRepository(workspaceId, repoUrl) {
-    const url = "https://bifrost-premium-https-v4.gw.postman.com/ws/proxy";
-    const headers = {
-      "Content-Type": "application/json",
-      "x-access-token": this.accessToken
-    };
-    if (this.teamId) {
-      headers["x-entity-team-id"] = this.teamId;
-    }
     const payload = {
       service: "workspaces",
       method: "POST",
@@ -29766,11 +29835,12 @@ var BifrostInternalIntegrationAdapter = class {
         versionControl: true
       }
     };
-    const response = await this.fetchImpl(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload)
-    });
+    const response = await this.proxyRequest(
+      payload.service,
+      payload.method,
+      payload.path,
+      payload.body
+    );
     if (response.ok) return;
     if (response.status === 400) {
       const body = await response.text();
@@ -29787,29 +29857,68 @@ var BifrostInternalIntegrationAdapter = class {
     }
     throw await HttpError.fromResponse(response, {
       method: "POST",
-      requestHeaders: headers,
+      requestHeaders: {
+        "Content-Type": "application/json",
+        "x-access-token": this.accessToken,
+        ...this.teamId ? { "x-entity-team-id": this.teamId } : {}
+      },
       secretValues: [this.accessToken],
-      url
+      url: "https://bifrost-premium-https-v4.gw.postman.com/ws/proxy"
+    });
+  }
+  async linkCollectionsToSpecification(specificationId, collections) {
+    if (collections.length === 0) {
+      return;
+    }
+    const response = await this.proxyRequest(
+      "specification",
+      "put",
+      `/specifications/${specificationId}/collections`,
+      collections.map((collection) => ({
+        collectionId: collection.collectionId,
+        ...collection.syncOptions ? { syncOptions: collection.syncOptions } : {}
+      }))
+    );
+    if (response.ok) {
+      return;
+    }
+    throw await HttpError.fromResponse(response, {
+      method: "POST",
+      requestHeaders: {
+        "Content-Type": "application/json",
+        "x-access-token": this.accessToken,
+        ...this.teamId ? { "x-entity-team-id": this.teamId } : {}
+      },
+      secretValues: [this.accessToken],
+      url: "https://bifrost-premium-https-v4.gw.postman.com/ws/proxy"
+    });
+  }
+  async syncCollection(specificationId, collectionId) {
+    const response = await this.proxyRequest(
+      "specification",
+      "post",
+      `/specifications/${specificationId}/collections/${collectionId}/sync`
+    );
+    if (response.ok) {
+      return;
+    }
+    throw await HttpError.fromResponse(response, {
+      method: "POST",
+      requestHeaders: {
+        "Content-Type": "application/json",
+        "x-access-token": this.accessToken,
+        ...this.teamId ? { "x-entity-team-id": this.teamId } : {}
+      },
+      secretValues: [this.accessToken],
+      url: "https://bifrost-premium-https-v4.gw.postman.com/ws/proxy"
     });
   }
   async getWorkspaceGitRepoUrl(workspaceId) {
-    const url = "https://bifrost-premium-https-v4.gw.postman.com/ws/proxy";
-    const headers = {
-      "Content-Type": "application/json",
-      "x-access-token": this.accessToken
-    };
-    if (this.teamId) {
-      headers["x-entity-team-id"] = this.teamId;
-    }
-    const response = await this.fetchImpl(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        service: "workspaces",
-        method: "GET",
-        path: `/workspaces/${workspaceId}/filesystem`
-      })
-    });
+    const response = await this.proxyRequest(
+      "workspaces",
+      "GET",
+      `/workspaces/${workspaceId}/filesystem`
+    );
     if (response.status === 404) return null;
     if (!response.ok) return null;
     const body = await response.text();
@@ -29992,8 +30101,15 @@ function requireInput(actionCore, name) {
 function optionalInput(actionCore, name) {
   return normalizeInputValue(actionCore.getInput(name));
 }
+function parseBooleanInput(value, defaultValue) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return defaultValue;
+  if (["true", "1", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "no", "off"].includes(normalized)) return false;
+  return defaultValue;
+}
 function parseCollectionSyncMode(value) {
-  if (value === "reuse" || value === "version") {
+  if (value === "version") {
     return value;
   }
   return "refresh";
@@ -30025,8 +30141,8 @@ function resolveInputs(env = process.env) {
       if (parsedUrl.protocol !== "https:") {
         throw new Error("not https");
       }
-    } catch {
-      throw new Error(`spec-url must be a valid HTTPS URL, got: ${specUrl}`);
+    } catch (error) {
+      throw new Error(`spec-url must be a valid HTTPS URL, got: ${specUrl}`, { cause: error });
     }
   }
   return {
@@ -30036,6 +30152,7 @@ function resolveInputs(env = process.env) {
     baselineCollectionId: getInput("baseline-collection-id", env),
     smokeCollectionId: getInput("smoke-collection-id", env),
     contractCollectionId: getInput("contract-collection-id", env),
+    syncExamples: parseBooleanInput(getInput("sync-examples", env), true),
     collectionSyncMode: parseCollectionSyncMode(getInput("collection-sync-mode", env)),
     specSyncMode: parseSpecSyncMode(getInput("spec-sync-mode", env)),
     releaseLabel: getInput("release-label", env),
@@ -30095,6 +30212,7 @@ function readActionInputs(actionCore) {
     INPUT_BASELINE_COLLECTION_ID: optionalInput(actionCore, "baseline-collection-id"),
     INPUT_SMOKE_COLLECTION_ID: optionalInput(actionCore, "smoke-collection-id"),
     INPUT_CONTRACT_COLLECTION_ID: optionalInput(actionCore, "contract-collection-id"),
+    INPUT_SYNC_EXAMPLES: optionalInput(actionCore, "sync-examples") ?? openAlphaActionContract.inputs["sync-examples"].default,
     INPUT_COLLECTION_SYNC_MODE: optionalInput(actionCore, "collection-sync-mode") ?? openAlphaActionContract.inputs["collection-sync-mode"].default,
     INPUT_SPEC_SYNC_MODE: optionalInput(actionCore, "spec-sync-mode") ?? openAlphaActionContract.inputs["spec-sync-mode"].default,
     INPUT_RELEASE_LABEL: optionalInput(actionCore, "release-label"),
@@ -30226,6 +30344,30 @@ function findCloudResourceId(map, matcher) {
   }
   const match = Object.entries(map).find(([filePath]) => matcher(filePath));
   return match?.[1];
+}
+function sanitizeCollectionForUpdate(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeCollectionForUpdate(entry));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const record = { ...value };
+  delete record.id;
+  delete record.uid;
+  delete record._postman_id;
+  delete record.response;
+  if (record.request && typeof record.request === "object" && record.request !== null) {
+    const request = { ...record.request };
+    delete request.id;
+    delete request.uid;
+    delete request._postman_id;
+    record.request = request;
+  }
+  for (const [key, entry] of Object.entries(record)) {
+    record[key] = sanitizeCollectionForUpdate(entry);
+  }
+  return record;
 }
 var SPEC_SUMMARY_MAX_LEN = 200;
 var SPEC_HTTP_METHODS = /* @__PURE__ */ new Set([
@@ -30489,37 +30631,35 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
       dependencies.core.info("Resolved spec-id from .postman/resources.yaml");
     }
   }
-  let baselineCollectionId = inputs.collectionSyncMode === "refresh" ? void 0 : inputs.baselineCollectionId;
-  let smokeCollectionId = inputs.collectionSyncMode === "refresh" ? void 0 : inputs.smokeCollectionId;
-  let contractCollectionId = inputs.collectionSyncMode === "refresh" ? void 0 : inputs.contractCollectionId;
-  if (inputs.collectionSyncMode !== "refresh") {
-    const cloudCollections = resourcesState?.cloudResources?.collections;
-    if (!baselineCollectionId) {
-      baselineCollectionId = findCloudResourceId(
-        cloudCollections,
-        (filePath) => filePath.includes("[Baseline]")
-      );
-      if (baselineCollectionId) {
-        dependencies.core.info("Resolved baseline-collection-id from .postman/resources.yaml");
-      }
+  let baselineCollectionId = inputs.baselineCollectionId;
+  let smokeCollectionId = inputs.smokeCollectionId;
+  let contractCollectionId = inputs.contractCollectionId;
+  const cloudCollections = resourcesState?.cloudResources?.collections;
+  if (!baselineCollectionId) {
+    baselineCollectionId = findCloudResourceId(
+      cloudCollections,
+      (filePath) => filePath.includes("[Baseline]")
+    );
+    if (baselineCollectionId) {
+      dependencies.core.info("Resolved baseline-collection-id from .postman/resources.yaml");
     }
-    if (!smokeCollectionId) {
-      smokeCollectionId = findCloudResourceId(
-        cloudCollections,
-        (filePath) => filePath.includes("[Smoke]")
-      );
-      if (smokeCollectionId) {
-        dependencies.core.info("Resolved smoke-collection-id from .postman/resources.yaml");
-      }
+  }
+  if (!smokeCollectionId) {
+    smokeCollectionId = findCloudResourceId(
+      cloudCollections,
+      (filePath) => filePath.includes("[Smoke]")
+    );
+    if (smokeCollectionId) {
+      dependencies.core.info("Resolved smoke-collection-id from .postman/resources.yaml");
     }
-    if (!contractCollectionId) {
-      contractCollectionId = findCloudResourceId(
-        cloudCollections,
-        (filePath) => filePath.includes("[Contract]")
-      );
-      if (contractCollectionId) {
-        dependencies.core.info("Resolved contract-collection-id from .postman/resources.yaml");
-      }
+  }
+  if (!contractCollectionId) {
+    contractCollectionId = findCloudResourceId(
+      cloudCollections,
+      (filePath) => filePath.includes("[Contract]")
+    );
+    if (contractCollectionId) {
+      dependencies.core.info("Resolved contract-collection-id from .postman/resources.yaml");
     }
   }
   if (specId) {
@@ -30592,43 +30732,116 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
     dependencies.core,
     "Generate Collections from Spec",
     async () => {
-      const shouldReuseCollections = inputs.collectionSyncMode !== "refresh";
       const assetProjectName = inputs.collectionSyncMode === "version" ? createAssetProjectName(inputs, releaseLabel) : inputs.projectName;
-      outputs["baseline-collection-id"] = shouldReuseCollections ? baselineCollectionId || "" : "";
-      outputs["smoke-collection-id"] = shouldReuseCollections ? smokeCollectionId || "" : "";
-      outputs["contract-collection-id"] = shouldReuseCollections ? contractCollectionId || "" : "";
-      if (!outputs["baseline-collection-id"]) {
-        outputs["baseline-collection-id"] = await dependencies.postman.generateCollection(
+      const shouldReuseCollections = inputs.collectionSyncMode !== "refresh";
+      const temporaryCollectionIds = /* @__PURE__ */ new Set();
+      const getCollection = dependencies.postman.getCollection?.bind(dependencies.postman);
+      const updateCollection = dependencies.postman.updateCollection?.bind(dependencies.postman);
+      const deleteCollection = dependencies.postman.deleteCollection?.bind(dependencies.postman);
+      const refreshCollectionInPlace = async (prefix, existingCollectionId) => {
+        const generatedCollectionId = await dependencies.postman.generateCollection(
           outputs["spec-id"],
           assetProjectName,
-          "[Baseline]"
+          prefix
         );
-      } else {
+        if (!existingCollectionId) {
+          dependencies.core.info(
+            `No existing ${prefix} collection found; using newly generated collection ${generatedCollectionId}`
+          );
+          return generatedCollectionId;
+        }
+        if (!getCollection || !updateCollection) {
+          throw new Error(
+            "Refresh-in-place requires getCollection and updateCollection support from the Postman client"
+          );
+        }
+        const generatedCollection = await getCollection(generatedCollectionId);
+        try {
+          await updateCollection(
+            existingCollectionId,
+            sanitizeCollectionForUpdate(generatedCollection)
+          );
+        } catch (error) {
+          if (error instanceof HttpError && error.status === 404) {
+            dependencies.core.warning(
+              `Existing ${prefix} collection ${existingCollectionId} was not found during refresh; using newly generated collection ${generatedCollectionId}`
+            );
+            return generatedCollectionId;
+          }
+          throw error;
+        }
+        temporaryCollectionIds.add(generatedCollectionId);
         dependencies.core.info(
-          `Using existing baseline collection: ${outputs["baseline-collection-id"]}`
+          `Refreshed existing ${prefix} collection ${existingCollectionId} with temporary collection ${generatedCollectionId}`
         );
+        return existingCollectionId;
+      };
+      if (shouldReuseCollections) {
+        outputs["baseline-collection-id"] = baselineCollectionId || "";
+        outputs["smoke-collection-id"] = smokeCollectionId || "";
+        outputs["contract-collection-id"] = contractCollectionId || "";
+        if (!outputs["baseline-collection-id"]) {
+          outputs["baseline-collection-id"] = await dependencies.postman.generateCollection(
+            outputs["spec-id"],
+            assetProjectName,
+            "[Baseline]"
+          );
+        } else {
+          dependencies.core.info(
+            `Using existing baseline collection: ${outputs["baseline-collection-id"]}`
+          );
+        }
+        if (!outputs["smoke-collection-id"]) {
+          outputs["smoke-collection-id"] = await dependencies.postman.generateCollection(
+            outputs["spec-id"],
+            assetProjectName,
+            "[Smoke]"
+          );
+        } else {
+          dependencies.core.info(
+            `Using existing smoke collection: ${outputs["smoke-collection-id"]}`
+          );
+        }
+        if (!outputs["contract-collection-id"]) {
+          outputs["contract-collection-id"] = await dependencies.postman.generateCollection(
+            outputs["spec-id"],
+            assetProjectName,
+            "[Contract]"
+          );
+        } else {
+          dependencies.core.info(
+            `Using existing contract collection: ${outputs["contract-collection-id"]}`
+          );
+        }
+        return;
       }
-      if (!outputs["smoke-collection-id"]) {
-        outputs["smoke-collection-id"] = await dependencies.postman.generateCollection(
-          outputs["spec-id"],
-          assetProjectName,
-          "[Smoke]"
-        );
-      } else {
-        dependencies.core.info(
-          `Using existing smoke collection: ${outputs["smoke-collection-id"]}`
-        );
-      }
-      if (!outputs["contract-collection-id"]) {
-        outputs["contract-collection-id"] = await dependencies.postman.generateCollection(
-          outputs["spec-id"],
-          assetProjectName,
-          "[Contract]"
-        );
-      } else {
-        dependencies.core.info(
-          `Using existing contract collection: ${outputs["contract-collection-id"]}`
-        );
+      outputs["baseline-collection-id"] = await refreshCollectionInPlace(
+        "[Baseline]",
+        baselineCollectionId
+      );
+      outputs["smoke-collection-id"] = await refreshCollectionInPlace(
+        "[Smoke]",
+        smokeCollectionId
+      );
+      outputs["contract-collection-id"] = await refreshCollectionInPlace(
+        "[Contract]",
+        contractCollectionId
+      );
+      for (const tempCollectionId of temporaryCollectionIds) {
+        try {
+          if (!deleteCollection) {
+            dependencies.core.warning(
+              `Temporary collection ${tempCollectionId} was not deleted because deleteCollection is unavailable`
+            );
+            continue;
+          }
+          await deleteCollection(tempCollectionId);
+          dependencies.core.info(`Deleted temporary generated collection ${tempCollectionId}`);
+        } catch (error) {
+          dependencies.core.warning(
+            `Failed to delete temporary collection ${tempCollectionId}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
       }
     }
   );
@@ -30667,6 +30880,48 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
       ]);
     }
   );
+  const linkedCollectionIds = [
+    outputs["baseline-collection-id"],
+    outputs["smoke-collection-id"],
+    outputs["contract-collection-id"]
+  ].filter(Boolean);
+  if (linkedCollectionIds.length > 0) {
+    if (dependencies.internalIntegration) {
+      await runGroup(
+        dependencies.core,
+        "Link Collections to Specification",
+        async () => {
+          await dependencies.internalIntegration?.linkCollectionsToSpecification(
+            outputs["spec-id"],
+            linkedCollectionIds.map((collectionId) => ({
+              collectionId,
+              syncOptions: {
+                syncExamples: inputs.syncExamples
+              }
+            }))
+          );
+        }
+      );
+      await runGroup(
+        dependencies.core,
+        "Sync Linked Collections",
+        async () => {
+          await Promise.all(
+            linkedCollectionIds.map(
+              (collectionId) => dependencies.internalIntegration.syncCollection(
+                outputs["spec-id"],
+                collectionId
+              )
+            )
+          );
+        }
+      );
+    } else {
+      dependencies.core.warning(
+        "Skipping cloud spec-to-collection linking and sync because postman-access-token is not configured"
+      );
+    }
+  }
   for (const [name, value] of Object.entries(outputs)) {
     dependencies.core.setOutput(name, value);
   }

@@ -1,6 +1,6 @@
 {
   "name": "@postman-cse/onboarding-bootstrap",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Public open-alpha Postman bootstrap GitHub Action.",
   "type": "module",
   "main": "dist/index.cjs",
@@ -8,8 +8,10 @@
     "postman-bootstrap": "dist/cli.cjs"
   },
   "scripts": {
-    "build": "npm run typecheck && rm -rf dist && esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs && esbuild src/cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/cli.cjs",
+    "build": "npm run typecheck && rm -rf dist && esbuild src/index.ts --bundle --platform=node --target=node24 --format=cjs --outfile=dist/index.cjs && esbuild src/cli.ts --bundle --platform=node --target=node24 --format=cjs --outfile=dist/cli.cjs",
     "check:dist": "npm run build && git diff --exit-code -- dist",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
@@ -31,9 +33,14 @@
     "picomatch": ">=4.0.4"
   },
   "devDependencies": {
-    "esbuild": "^0.27.3",
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.3.5",
+    "esbuild": "^0.27.3",
+    "eslint": "^10.1.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.2",
     "vitest": "^4.0.18",
     "yaml": "^2.8.2"
   },

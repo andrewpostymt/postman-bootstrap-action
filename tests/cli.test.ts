@@ -3,6 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { ConsoleReporter, createCliDependencies, parseCliArgs, runCli, toDotenv } from '../src/cli.js';
 import { resolveInputs } from '../src/index.js';
 
+type CliOutputs = {
+  'workspace-id': string;
+  'workspace-url': string;
+  'workspace-name': string;
+  'spec-id': string;
+  'baseline-collection-id': string;
+  'smoke-collection-id': string;
+  'contract-collection-id': string;
+  'collections-json': string;
+  'lint-summary-json': string;
+};
+
 describe('parseCliArgs', () => {
   it('maps CLI flags into INPUT_* environment variables', () => {
     const config = parseCliArgs(
@@ -14,6 +26,8 @@ describe('parseCliArgs', () => {
         'pmak-test',
         '--workspace-admin-user-ids',
         '101,102',
+        '--sync-examples',
+        'false',
         '--collection-sync-mode',
         'version',
         '--spec-sync-mode',
@@ -36,6 +50,7 @@ describe('parseCliArgs', () => {
     expect(config.inputEnv.INPUT_SPEC_URL).toBe('https://example.test/openapi.yaml');
     expect(config.inputEnv.INPUT_POSTMAN_API_KEY).toBe('pmak-test');
     expect(config.inputEnv.INPUT_WORKSPACE_ADMIN_USER_IDS).toBe('101,102');
+    expect(config.inputEnv.INPUT_SYNC_EXAMPLES).toBe('false');
     expect(config.inputEnv.INPUT_COLLECTION_SYNC_MODE).toBe('version');
     expect(config.inputEnv.INPUT_SPEC_SYNC_MODE).toBe('version');
     expect(config.inputEnv.INPUT_RELEASE_LABEL).toBe('v1.2.3');
@@ -58,7 +73,7 @@ describe('toDotenv', () => {
       'contract-collection-id': 'col-contract',
       'collections-json': '{"baseline":"col-baseline"}',
       'lint-summary-json': '{"errors":0}'
-    } as any);
+    } satisfies CliOutputs);
 
     expect(dotenv).toContain('POSTMAN_BOOTSTRAP_WORKSPACE_ID="ws-123"');
     expect(dotenv).toContain('POSTMAN_BOOTSTRAP_SPEC_ID="spec-123"');
@@ -113,7 +128,7 @@ describe('runCli', () => {
             'contract-collection-id': 'col-contract',
             'collections-json': '{"baseline":"col-baseline","smoke":"col-smoke","contract":"col-contract"}',
             'lint-summary-json': '{"errors":0,"total":0,"violations":[],"warnings":0}'
-          } as any;
+          } satisfies CliOutputs;
         },
         writeStdout: (chunk) => {
           stdoutChunks.push(chunk);

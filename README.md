@@ -32,6 +32,21 @@ Lifecycle behavior remains backward-compatible except for collection default mod
 
 If you do not set those inputs, the action refreshes collection pointers from the resolved spec and keeps one canonical spec update path.
 
+### Bootstrap phase independence
+
+**Bootstrap succeeds independently** — it creates or updates Postman workspace and collections even if a later stage (repo sync, Insights onboarding) fails. This is intentional:
+
+- **Postman side is self-contained:** Workspace creation, spec upload, and collection generation do not depend on repository access or merge status.
+- **Repository side is async:** Later stages may fail due to repo permissions, branch protection, or pending approval. Bootstrap completion is not blocked by these downstream concerns.
+- **Idempotent reruns:** If a later stage fails, subsequent reruns of the action will reuse existing Postman assets (via `workspace-id`, `spec-id`, collection IDs) and focus on the failed stage without recreating everything.
+
+**When bootstrap fails:** The action stops and does not proceed to repo sync. Postman assets are left in the state they reached before the failure. Clear error messages identify which bootstrap step failed (e.g. spec lint, governance assignment, collection generation).
+
+This layered design means customers can:
+1. Verify Postman workspace health independently.
+2. Debug repository issues (branch protection, permissions) separately from Postman provisioning.
+3. Reuse existing Postman assets when fixing downstream failures.
+
 ### Team ID derivation
 
 The action automatically derives the Postman Team ID from your `postman-api-key` via the `/me` API. There is no need to supply a separate team ID input. If the environment variable `POSTMAN_TEAM_ID` is set, that value takes precedence.
@@ -153,7 +168,7 @@ Example GitLab CI job:
 
 ```yaml
 bootstrap:
-  image: node:20
+  image: node:24
   script:
     - npm install -g postman-bootstrap-action
     - postman-bootstrap --project-name core-payments --spec-url "$SPEC_URL" --postman-api-key "$POSTMAN_API_KEY" --postman-access-token "$POSTMAN_ACCESS_TOKEN" --result-json bootstrap-result.json --dotenv-path bootstrap.env
@@ -169,7 +184,7 @@ Example Bitbucket Pipelines step:
 pipelines:
   default:
     - step:
-        image: node:20
+        image: node:24
         script:
           - npm install -g postman-bootstrap-action
           - postman-bootstrap --project-name core-payments --spec-url "$SPEC_URL" --postman-api-key "$POSTMAN_API_KEY" --postman-access-token "$POSTMAN_ACCESS_TOKEN" --result-json bootstrap-result.json --dotenv-path bootstrap.env
@@ -202,7 +217,8 @@ steps:
 | `baseline-collection-id` | | Reuse an existing baseline collection. |
 | `smoke-collection-id` | | Reuse an existing smoke collection. |
 | `contract-collection-id` | | Reuse an existing contract collection. |
-| `collection-sync-mode` | `refresh` | Collection lifecycle policy. `reuse` keeps existing collections, `refresh` regenerates the current collection set from the latest spec, and `version` creates or reuses release-scoped collections. |
+| `sync-examples` | `true` | Whether linked spec/collection relations should enable example syncing during cloud linkage. |
+| `collection-sync-mode` | `refresh` | Collection lifecycle policy. `refresh` keeps the tracked collection IDs while updating them from the latest spec, and `version` creates or reuses release-scoped collections. |
 | `spec-sync-mode` | `update` | Spec lifecycle policy. `update` keeps one canonical spec current in Spec Hub, while `version` creates or reuses a release-scoped spec asset. |
 | `release-label` | | Optional release label used for versioned specs and collections. When omitted for versioned sync, the action derives one from GitHub tag or branch metadata. |
 | `project-name` | | Service name used in workspace and asset naming. |
@@ -246,6 +262,14 @@ Current Postman asset state lives in `.postman/resources.yaml`.
 
 - `update` and `reuse` modes resolve current-state mappings from the checked-out ref.
 - `version` mode reuses only the checked-out ref's mappings; release history lives in git history and tags, not in a separate manifest file or repository variables.
+
+### Cloud spec-to-collection syncing
+
+After collections exist, bootstrap links them to the cloud specification and triggers a spec-side collection sync when `postman-access-token` is available.
+
+- `sync-examples: true` (default) enables example syncing in that relation setup.
+- `sync-examples: false` keeps the relation but disables example syncing.
+- If `postman-access-token` is missing, bootstrap warns and skips the cloud link/sync step.
 
 ### Contract smoke monitoring
 

@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { parse, stringify } from 'yaml';
 
 import { openAlphaActionContract } from './contracts.js';
+import { HttpError } from './lib/http-error.js';
 import { createInternalIntegrationAdapter, type InternalIntegrationAdapter } from './lib/postman/internal-integration-adapter.js';
 import { PostmanAssetsClient } from './lib/postman/postman-assets-client.js';
 import { resolveCanonicalWorkspaceSelection } from './lib/postman/workspace-selection.js';
@@ -19,7 +20,8 @@ export interface ResolvedInputs {
   baselineCollectionId?: string;
   smokeCollectionId?: string;
   contractCollectionId?: string;
-  collectionSyncMode: 'reuse' | 'refresh' | 'version';
+  syncExamples: boolean;
+  collectionSyncMode: 'refresh' | 'version';
   specSyncMode: 'update' | 'version';
   releaseLabel?: string;
   domain?: string;
@@ -101,7 +103,7 @@ export interface BootstrapExecutionDependencies {
   io: IOLike;
   internalIntegration?: Pick<
     InternalIntegrationAdapter,
-    'assignWorkspaceToGovernanceGroup'
+    'assignWorkspaceToGovernanceGroup' | 'linkCollectionsToSpecification' | 'syncCollection'
   >;
   postman: Pick<
     PostmanAssetsClient,
@@ -118,7 +120,8 @@ export interface BootstrapExecutionDependencies {
     | 'tagCollection'
     | 'uploadSpec'
     | 'updateSpec'
-  >;
+  > &
+    Partial<Pick<PostmanAssetsClient, 'deleteCollection' | 'getCollection' | 'updateCollection'>>;
   specFetcher: typeof fetch;
 }
 
@@ -159,28 +162,6 @@ function optionalInput(
   return normalizeInputValue(actionCore.getInput(name));
 }
 
-function parseJsonValue<T>(
-  raw: string,
-  fallback: T,
-  inputName: string
-): T {
-  try {
-    return (JSON.parse(raw || JSON.stringify(fallback)) as T) ?? fallback;
-  } catch (error) {
-    throw new Error(
-      `Invalid JSON for ${inputName}: ${error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
-}
-
-function asStringArray(value: unknown, inputName: string): string[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`${inputName} must be a JSON array`);
-  }
-  return value.map((entry) => String(entry));
-}
-
 function parseBooleanInput(value: string | undefined, defaultValue: boolean): boolean {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) return defaultValue;
@@ -191,8 +172,8 @@ function parseBooleanInput(value: string | undefined, defaultValue: boolean): bo
 
 function parseCollectionSyncMode(
   value: string | undefined
-): 'reuse' | 'refresh' | 'version' {
-  if (value === 'reuse' || value === 'version') {
+): 'refresh' | 'version' {
+  if (value === 'version') {
     return value;
   }
   return 'refresh';
@@ -235,8 +216,8 @@ export function resolveInputs(
       if (parsedUrl.protocol !== 'https:') {
         throw new Error('not https');
       }
-    } catch {
-      throw new Error(`spec-url must be a valid HTTPS URL, got: ${specUrl}`);
+    } catch (error) {
+      throw new Error(`spec-url must be a valid HTTPS URL, got: ${specUrl}`, { cause: error });
     }
   }
 
@@ -250,6 +231,7 @@ export function resolveInputs(
     baselineCollectionId: getInput('baseline-collection-id', env),
     smokeCollectionId: getInput('smoke-collection-id', env),
     contractCollectionId: getInput('contract-collection-id', env),
+    syncExamples: parseBooleanInput(getInput('sync-examples', env), true),
     collectionSyncMode: parseCollectionSyncMode(getInput('collection-sync-mode', env)),
     specSyncMode: parseSpecSyncMode(getInput('spec-sync-mode', env)),
     releaseLabel: getInput('release-label', env),
@@ -322,6 +304,9 @@ export function readActionInputs(
     INPUT_BASELINE_COLLECTION_ID: optionalInput(actionCore, 'baseline-collection-id'),
     INPUT_SMOKE_COLLECTION_ID: optionalInput(actionCore, 'smoke-collection-id'),
     INPUT_CONTRACT_COLLECTION_ID: optionalInput(actionCore, 'contract-collection-id'),
+    INPUT_SYNC_EXAMPLES:
+      optionalInput(actionCore, 'sync-examples') ??
+      openAlphaActionContract.inputs['sync-examples'].default,
     INPUT_COLLECTION_SYNC_MODE:
       optionalInput(actionCore, 'collection-sync-mode') ??
       openAlphaActionContract.inputs['collection-sync-mode'].default,
@@ -530,6 +515,36 @@ function findCloudResourceId(
 
   const match = Object.entries(map).find(([filePath]) => matcher(filePath));
   return match?.[1];
+}
+
+function sanitizeCollectionForUpdate(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeCollectionForUpdate(entry));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const record = { ...(value as Record<string, unknown>) };
+  delete record.id;
+  delete record.uid;
+  delete record._postman_id;
+  delete record.response;
+
+  if (record.request && typeof record.request === 'object' && record.request !== null) {
+    const request = { ...(record.request as Record<string, unknown>) };
+    delete request.id;
+    delete request.uid;
+    delete request._postman_id;
+    record.request = request;
+  }
+
+  for (const [key, entry] of Object.entries(record)) {
+    record[key] = sanitizeCollectionForUpdate(entry);
+  }
+
+  return record;
 }
 
 const SPEC_SUMMARY_MAX_LEN = 200;
@@ -820,41 +835,36 @@ export async function runBootstrap(
     }
   }
 
-  let baselineCollectionId =
-    inputs.collectionSyncMode === 'refresh' ? undefined : inputs.baselineCollectionId;
-  let smokeCollectionId =
-    inputs.collectionSyncMode === 'refresh' ? undefined : inputs.smokeCollectionId;
-  let contractCollectionId =
-    inputs.collectionSyncMode === 'refresh' ? undefined : inputs.contractCollectionId;
+  let baselineCollectionId = inputs.baselineCollectionId;
+  let smokeCollectionId = inputs.smokeCollectionId;
+  let contractCollectionId = inputs.contractCollectionId;
 
-  if (inputs.collectionSyncMode !== 'refresh') {
-    const cloudCollections = resourcesState?.cloudResources?.collections;
-    if (!baselineCollectionId) {
-      baselineCollectionId = findCloudResourceId(
-        cloudCollections,
-        (filePath) => filePath.includes('[Baseline]')
-      );
-      if (baselineCollectionId) {
-        dependencies.core.info('Resolved baseline-collection-id from .postman/resources.yaml');
-      }
+  const cloudCollections = resourcesState?.cloudResources?.collections;
+  if (!baselineCollectionId) {
+    baselineCollectionId = findCloudResourceId(
+      cloudCollections,
+      (filePath) => filePath.includes('[Baseline]')
+    );
+    if (baselineCollectionId) {
+      dependencies.core.info('Resolved baseline-collection-id from .postman/resources.yaml');
     }
-    if (!smokeCollectionId) {
-      smokeCollectionId = findCloudResourceId(
-        cloudCollections,
-        (filePath) => filePath.includes('[Smoke]')
-      );
-      if (smokeCollectionId) {
-        dependencies.core.info('Resolved smoke-collection-id from .postman/resources.yaml');
-      }
+  }
+  if (!smokeCollectionId) {
+    smokeCollectionId = findCloudResourceId(
+      cloudCollections,
+      (filePath) => filePath.includes('[Smoke]')
+    );
+    if (smokeCollectionId) {
+      dependencies.core.info('Resolved smoke-collection-id from .postman/resources.yaml');
     }
-    if (!contractCollectionId) {
-      contractCollectionId = findCloudResourceId(
-        cloudCollections,
-        (filePath) => filePath.includes('[Contract]')
-      );
-      if (contractCollectionId) {
-        dependencies.core.info('Resolved contract-collection-id from .postman/resources.yaml');
-      }
+  }
+  if (!contractCollectionId) {
+    contractCollectionId = findCloudResourceId(
+      cloudCollections,
+      (filePath) => filePath.includes('[Contract]')
+    );
+    if (contractCollectionId) {
+      dependencies.core.info('Resolved contract-collection-id from .postman/resources.yaml');
     }
   }
 
@@ -938,51 +948,130 @@ export async function runBootstrap(
     dependencies.core,
     'Generate Collections from Spec',
     async () => {
-      const shouldReuseCollections = inputs.collectionSyncMode !== 'refresh';
       const assetProjectName =
         inputs.collectionSyncMode === 'version'
           ? createAssetProjectName(inputs, releaseLabel)
           : inputs.projectName;
+      const shouldReuseCollections = inputs.collectionSyncMode !== 'refresh';
+      const temporaryCollectionIds = new Set<string>();
+      const getCollection = dependencies.postman.getCollection?.bind(dependencies.postman);
+      const updateCollection = dependencies.postman.updateCollection?.bind(dependencies.postman);
+      const deleteCollection = dependencies.postman.deleteCollection?.bind(dependencies.postman);
 
-      outputs['baseline-collection-id'] =
-        shouldReuseCollections ? baselineCollectionId || '' : '';
-      outputs['smoke-collection-id'] =
-        shouldReuseCollections ? smokeCollectionId || '' : '';
-      outputs['contract-collection-id'] =
-        shouldReuseCollections ? contractCollectionId || '' : '';
+      const refreshCollectionInPlace = async (
+        prefix: '[Baseline]' | '[Smoke]' | '[Contract]',
+        existingCollectionId: string | undefined
+      ): Promise<string> => {
+        const generatedCollectionId = await dependencies.postman.generateCollection(
+          outputs['spec-id'],
+          assetProjectName,
+          prefix
+        );
 
-      if (!outputs['baseline-collection-id']) {
-        outputs['baseline-collection-id'] = await dependencies.postman.generateCollection(
-          outputs['spec-id'],
-          assetProjectName,
-          '[Baseline]'
-        );
-      } else {
+        if (!existingCollectionId) {
+          dependencies.core.info(
+            `No existing ${prefix} collection found; using newly generated collection ${generatedCollectionId}`
+          );
+          return generatedCollectionId;
+        }
+
+        if (!getCollection || !updateCollection) {
+          throw new Error(
+            'Refresh-in-place requires getCollection and updateCollection support from the Postman client'
+          );
+        }
+
+        const generatedCollection = await getCollection(generatedCollectionId);
+        try {
+          await updateCollection(
+            existingCollectionId,
+            sanitizeCollectionForUpdate(generatedCollection)
+          );
+        } catch (error) {
+          if (error instanceof HttpError && error.status === 404) {
+            dependencies.core.warning(
+              `Existing ${prefix} collection ${existingCollectionId} was not found during refresh; using newly generated collection ${generatedCollectionId}`
+            );
+            return generatedCollectionId;
+          }
+          throw error;
+        }
+        temporaryCollectionIds.add(generatedCollectionId);
         dependencies.core.info(
-          `Using existing baseline collection: ${outputs['baseline-collection-id']}`
+          `Refreshed existing ${prefix} collection ${existingCollectionId} with temporary collection ${generatedCollectionId}`
         );
+        return existingCollectionId;
+      };
+
+      if (shouldReuseCollections) {
+        outputs['baseline-collection-id'] = baselineCollectionId || '';
+        outputs['smoke-collection-id'] = smokeCollectionId || '';
+        outputs['contract-collection-id'] = contractCollectionId || '';
+
+        if (!outputs['baseline-collection-id']) {
+          outputs['baseline-collection-id'] = await dependencies.postman.generateCollection(
+            outputs['spec-id'],
+            assetProjectName,
+            '[Baseline]'
+          );
+        } else {
+          dependencies.core.info(
+            `Using existing baseline collection: ${outputs['baseline-collection-id']}`
+          );
+        }
+        if (!outputs['smoke-collection-id']) {
+          outputs['smoke-collection-id'] = await dependencies.postman.generateCollection(
+            outputs['spec-id'],
+            assetProjectName,
+            '[Smoke]'
+          );
+        } else {
+          dependencies.core.info(
+            `Using existing smoke collection: ${outputs['smoke-collection-id']}`
+          );
+        }
+        if (!outputs['contract-collection-id']) {
+          outputs['contract-collection-id'] = await dependencies.postman.generateCollection(
+            outputs['spec-id'],
+            assetProjectName,
+            '[Contract]'
+          );
+        } else {
+          dependencies.core.info(
+            `Using existing contract collection: ${outputs['contract-collection-id']}`
+          );
+        }
+        return;
       }
-      if (!outputs['smoke-collection-id']) {
-        outputs['smoke-collection-id'] = await dependencies.postman.generateCollection(
-          outputs['spec-id'],
-          assetProjectName,
-          '[Smoke]'
-        );
-      } else {
-        dependencies.core.info(
-          `Using existing smoke collection: ${outputs['smoke-collection-id']}`
-        );
-      }
-      if (!outputs['contract-collection-id']) {
-        outputs['contract-collection-id'] = await dependencies.postman.generateCollection(
-          outputs['spec-id'],
-          assetProjectName,
-          '[Contract]'
-        );
-      } else {
-        dependencies.core.info(
-          `Using existing contract collection: ${outputs['contract-collection-id']}`
-        );
+
+      outputs['baseline-collection-id'] = await refreshCollectionInPlace(
+        '[Baseline]',
+        baselineCollectionId
+      );
+      outputs['smoke-collection-id'] = await refreshCollectionInPlace(
+        '[Smoke]',
+        smokeCollectionId
+      );
+      outputs['contract-collection-id'] = await refreshCollectionInPlace(
+        '[Contract]',
+        contractCollectionId
+      );
+
+      for (const tempCollectionId of temporaryCollectionIds) {
+        try {
+          if (!deleteCollection) {
+            dependencies.core.warning(
+              `Temporary collection ${tempCollectionId} was not deleted because deleteCollection is unavailable`
+            );
+            continue;
+          }
+          await deleteCollection(tempCollectionId);
+          dependencies.core.info(`Deleted temporary generated collection ${tempCollectionId}`);
+        } catch (error) {
+          dependencies.core.warning(
+            `Failed to delete temporary collection ${tempCollectionId}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
       }
     }
   );
@@ -1024,6 +1113,51 @@ export async function runBootstrap(
       ]);
     }
   );
+
+  const linkedCollectionIds = [
+    outputs['baseline-collection-id'],
+    outputs['smoke-collection-id'],
+    outputs['contract-collection-id']
+  ].filter(Boolean);
+
+  if (linkedCollectionIds.length > 0) {
+    if (dependencies.internalIntegration) {
+      await runGroup(
+        dependencies.core,
+        'Link Collections to Specification',
+        async () => {
+          await dependencies.internalIntegration?.linkCollectionsToSpecification(
+            outputs['spec-id'],
+            linkedCollectionIds.map((collectionId) => ({
+              collectionId,
+              syncOptions: {
+                syncExamples: inputs.syncExamples
+              }
+            }))
+          );
+        }
+      );
+
+      await runGroup(
+        dependencies.core,
+        'Sync Linked Collections',
+        async () => {
+          await Promise.all(
+            linkedCollectionIds.map((collectionId) =>
+              dependencies.internalIntegration!.syncCollection(
+                outputs['spec-id'],
+                collectionId
+              )
+            )
+          );
+        }
+      );
+    } else {
+      dependencies.core.warning(
+        'Skipping cloud spec-to-collection linking and sync because postman-access-token is not configured'
+      );
+    }
+  }
 
   for (const [name, value] of Object.entries(outputs)) {
     dependencies.core.setOutput(name, value);
