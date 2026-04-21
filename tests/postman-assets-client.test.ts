@@ -296,6 +296,74 @@ describe('PostmanAssetsClient', () => {
     await expect(client.getTeams()).rejects.toThrow();
   });
 
+  it('uploads a 3.0 spec with type OPENAPI:3.0', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: 'spec-30' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'spec-30' }));
+
+    const client = new PostmanAssetsClient({ apiKey: 'pmak-test', fetchImpl });
+    const specId = await client.uploadSpec('ws-1', 'my-api', 'openapi: 3.0.3', '3.0');
+
+    expect(specId).toBe('spec-30');
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      'https://api.getpostman.com/specs?workspaceId=ws-1',
+      expect.objectContaining({
+        body: JSON.stringify({
+          name: 'my-api',
+          type: 'OPENAPI:3.0',
+          files: [{ path: 'index.yaml', content: 'openapi: 3.0.3' }]
+        })
+      })
+    );
+  });
+
+  it('uploads a 3.1 spec with type OPENAPI:3.1', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: 'spec-31' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'spec-31' }));
+
+    const client = new PostmanAssetsClient({ apiKey: 'pmak-test', fetchImpl });
+    const specId = await client.uploadSpec('ws-1', 'my-api', 'openapi: 3.1.0', '3.1');
+
+    expect(specId).toBe('spec-31');
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      'https://api.getpostman.com/specs?workspaceId=ws-1',
+      expect.objectContaining({
+        body: JSON.stringify({
+          name: 'my-api',
+          type: 'OPENAPI:3.1',
+          files: [{ path: 'index.yaml', content: 'openapi: 3.1.0' }]
+        })
+      })
+    );
+  });
+
+  it('throws for an unrecognised openapiVersion rather than silently defaulting', async () => {
+    const client = new PostmanAssetsClient({ apiKey: 'pmak-test' });
+    await expect(
+      client.uploadSpec('ws-1', 'my-api', 'openapi: 3.1.0', '3.2' as '3.1')
+    ).rejects.toThrow(/unsupported openapiVersion/);
+  });
+
+  it('defaults to OPENAPI:3.0 type when no version is supplied', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: 'spec-default' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'spec-default' }));
+
+    const client = new PostmanAssetsClient({ apiKey: 'pmak-test', fetchImpl });
+    await client.uploadSpec('ws-1', 'my-api', 'openapi: 3.0.3');
+
+    const body = JSON.parse(
+      (fetchImpl.mock.calls[0]?.[1] as RequestInit).body as string
+    ) as { type: string };
+    expect(body.type).toBe('OPENAPI:3.0');
+  });
+
   it('generateCollection sends folderStrategy and requestNameSource, omits nestedFolderHierarchy when strategy is Paths', async () => {
     const collectionUid = 'col-paths-123';
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
