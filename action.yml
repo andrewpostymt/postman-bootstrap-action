@@ -70,6 +70,18 @@ inputs:
     description: Integration backend for downstream workspace connectivity
     required: false
     default: bifrost
+  folder-strategy:
+    description: Folder organization strategy for generated collections (Paths or Tags)
+    required: false
+    default: Paths
+  nested-folder-hierarchy:
+    description: When folder-strategy is Tags, enables nested folder hierarchy
+    required: false
+    default: 'false'
+  request-name-source:
+    description: Determines how requests are named in generated collections (Fallback or URL)
+    required: false
+    default: Fallback
 outputs:
   workspace-id:
     description: Postman workspace ID

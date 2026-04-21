@@ -295,4 +295,61 @@ describe('PostmanAssetsClient', () => {
 
     await expect(client.getTeams()).rejects.toThrow();
   });
+
+  it('generateCollection sends folderStrategy and requestNameSource, omits nestedFolderHierarchy when strategy is Paths', async () => {
+    const collectionUid = 'col-paths-123';
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({ collection: { uid: collectionUid } })
+    );
+
+    const client = new PostmanAssetsClient({
+      apiKey: 'pmak-test',
+      fetchImpl
+    });
+
+    await client.generateCollection('spec-123', 'payments', '[Baseline]', 'Paths', true, 'Fallback');
+
+    const [, callOptions] = fetchImpl.mock.calls[0];
+    const body = JSON.parse((callOptions as RequestInit).body as string);
+    expect(body.options.folderStrategy).toBe('Paths');
+    expect(body.options.requestNameSource).toBe('Fallback');
+    expect(body.options).not.toHaveProperty('nestedFolderHierarchy');
+  });
+
+  it('generateCollection includes nestedFolderHierarchy when folderStrategy is Tags', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({ collection: { uid: 'col-tags-123' } })
+    );
+
+    const client = new PostmanAssetsClient({
+      apiKey: 'pmak-test',
+      fetchImpl
+    });
+
+    await client.generateCollection('spec-123', 'payments', '[Baseline]', 'Tags', true, 'URL');
+
+    const [, callOptions] = fetchImpl.mock.calls[0];
+    const body = JSON.parse((callOptions as RequestInit).body as string);
+    expect(body.options.folderStrategy).toBe('Tags');
+    expect(body.options.nestedFolderHierarchy).toBe(true);
+    expect(body.options.requestNameSource).toBe('URL');
+  });
+
+  it('generateCollection includes nestedFolderHierarchy: false when Tags and hierarchy disabled', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({ collection: { uid: 'col-tags-flat-123' } })
+    );
+
+    const client = new PostmanAssetsClient({
+      apiKey: 'pmak-test',
+      fetchImpl
+    });
+
+    await client.generateCollection('spec-123', 'payments', '[Smoke]', 'Tags', false, 'Fallback');
+
+    const [, callOptions] = fetchImpl.mock.calls[0];
+    const body = JSON.parse((callOptions as RequestInit).body as string);
+    expect(body.options.folderStrategy).toBe('Tags');
+    expect(body.options.nestedFolderHierarchy).toBe(false);
+  });
 });

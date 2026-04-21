@@ -114,6 +114,23 @@ export const openAlphaActionContract: BetaActionContract = {
       required: false,
       default: 'bifrost',
       allowedValues: ['bifrost']
+    },
+    'folder-strategy': {
+      description: 'Folder organization strategy for generated collections.',
+      required: false,
+      default: 'Paths',
+      allowedValues: ['Paths', 'Tags']
+    },
+    'nested-folder-hierarchy': {
+      description: 'When folder-strategy is Tags, enables nested folder hierarchy. Has no effect when folder-strategy is Paths.',
+      required: false,
+      default: 'false'
+    },
+    'request-name-source': {
+      description: 'Determines how requests are named in generated collections. Fallback uses summary, operationId, description, or URL in order.',
+      required: false,
+      default: 'Fallback',
+      allowedValues: ['Fallback', 'URL']
     }
   },
   outputs: {
