@@ -344,13 +344,18 @@ export class PostmanAssetsClient {
   async uploadSpec(
     workspaceId: string,
     projectName: string,
-    specContent: string
+    specContent: string,
+    openapiVersion: string = '3.0'
   ): Promise<string> {
+    if (openapiVersion !== '3.0' && openapiVersion !== '3.1') {
+      throw new Error(`uploadSpec: unsupported openapiVersion "${openapiVersion}". Expected '3.0' or '3.1'.`);
+    }
+    const specType = openapiVersion === '3.1' ? 'OPENAPI:3.1' : 'OPENAPI:3.0';
     const response = await this.request(`/specs?workspaceId=${workspaceId}`, {
       method: 'POST',
       body: JSON.stringify({
         name: projectName,
-        type: 'OPENAPI:3.0',
+        type: specType,
         files: [{ path: 'index.yaml', content: specContent }]
       })
     });

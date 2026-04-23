@@ -1,0 +1,147 @@
+openapi: "3.1.0"
+info:
+  title: E2E Test API (OAS 3.1)
+  version: "1.0.0"
+  description: |
+    Minimal OpenAPI 3.1 spec used for testing OAS 3.1 support in postman-bootstrap-action.
+
+    ## Service Level Agreement
+    This API targets 99.9% uptime with a p99 response time under 500ms.
+  contact:
+    name: Postman CSE
+    email: help@postman.com
+servers:
+  - url: https://api.example.com/v1
+    description: Production
+paths:
+  /pets:
+    get:
+      summary: List all pets
+      operationId: listPets
+      tags:
+        - Pets
+      responses:
+        "200":
+          description: A list of pets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pet"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      summary: Create a pet
+      operationId: createPet
+      tags:
+        - Pets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewPet"
+      responses:
+        "201":
+          description: Pet created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /pets/{petId}:
+    get:
+      summary: Get a pet by ID
+      operationId: getPet
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/ResourceId"
+      responses:
+        "200":
+          description: A single pet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+        "404":
+          description: Pet not found
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+# OAS 3.1 webhooks field (equivalent to paths but for inbound callbacks)
+webhooks:
+  petAdopted:
+    post:
+      summary: Pet adopted webhook
+      operationId: petAdoptedWebhook
+      requestBody:
+        description: Payload sent when a pet is adopted
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Pet"
+      responses:
+        "200":
+          description: Webhook received
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    ResourceId:
+      type: string
+      description: Unique resource identifier.
+    ResourceName:
+      type: string
+      description: Human-readable resource name.
+    # OAS 3.1: type as array replaces nullable: true
+    NullableTag:
+      type: ["string", "null"]
+      description: Optional classification tag.
+    Pet:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          $ref: "#/components/schemas/ResourceId"
+        name:
+          $ref: "#/components/schemas/ResourceName"
+        tag:
+          $ref: "#/components/schemas/NullableTag"
+    NewPet:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          $ref: "#/components/schemas/ResourceName"
+        tag:
+          $ref: "#/components/schemas/NullableTag"
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string

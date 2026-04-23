@@ -1,0 +1,98 @@
+name: E2E – generateCollection Parameters
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip-cleanup:
+        description: 'Skip resource cleanup after the run (useful for debugging created assets)'
+        required: false
+        default: 'false'
+
+jobs:
+  e2e:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: 'Paths + Fallback (defaults)'
+            folder-strategy: 'Paths'
+            nested-folder-hierarchy: 'false'
+            request-name-source: 'Fallback'
+            spec-fixture: 'e2e-spec.yaml'
+
+          - name: 'Tags + nested hierarchy + URL names'
+            folder-strategy: 'Tags'
+            nested-folder-hierarchy: 'true'
+            request-name-source: 'URL'
+            spec-fixture: 'e2e-spec.yaml'
+
+          - name: 'OAS 3.1 auto-detect (Paths + Fallback)'
+            folder-strategy: 'Paths'
+            nested-folder-hierarchy: 'false'
+            request-name-source: 'Fallback'
+            spec-fixture: 'e2e-spec-oas31.yaml'
+
+          - name: 'OAS 3.1 Petstore (real-world multi-file JSON spec)'
+            folder-strategy: 'Paths'
+            nested-folder-hierarchy: 'false'
+            request-name-source: 'Fallback'
+            spec-fixture: 'petstore-oas31.json'
+
+          - name: 'OAS 3.1 Petstore (single-file JSON spec)'
+            folder-strategy: 'Paths'
+            nested-folder-hierarchy: 'false'
+            request-name-source: 'Fallback'
+            spec-fixture: 'petstore-oas31-single-file.json'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Build action from source
+        run: npm ci && npm run build
+
+      - name: Run bootstrap action
+        id: bootstrap
+        uses: ./
+        with:
+          project-name: 'e2e-${{ matrix.folder-strategy }}-${{ github.run_id }}'
+          spec-url: 'https://raw.githubusercontent.com/andrewpostymt/postman-bootstrap-action/${{ github.ref_name }}/tests/fixtures/${{ matrix.spec-fixture }}'
+          postman-api-key: ${{ secrets.SMOKE_NON_ORG_API_KEY }}
+          folder-strategy: ${{ matrix.folder-strategy }}
+          nested-folder-hierarchy: ${{ matrix.nested-folder-hierarchy }}
+          request-name-source: ${{ matrix.request-name-source }}
+          collection-sync-mode: refresh
+
+      - name: Verify collection outputs are present
+        run: |
+          set -euo pipefail
+          echo "workspace-id:             ${{ steps.bootstrap.outputs.workspace-id }}"
+          echo "baseline-collection-id:   ${{ steps.bootstrap.outputs.baseline-collection-id }}"
+          echo "smoke-collection-id:      ${{ steps.bootstrap.outputs.smoke-collection-id }}"
+          echo "contract-collection-id:   ${{ steps.bootstrap.outputs.contract-collection-id }}"
+
+          [ -n "${{ steps.bootstrap.outputs.workspace-id }}" ]           || { echo "FAIL: workspace-id is empty"; exit 1; }
+          [ -n "${{ steps.bootstrap.outputs.baseline-collection-id }}" ] || { echo "FAIL: baseline-collection-id is empty"; exit 1; }
+          [ -n "${{ steps.bootstrap.outputs.smoke-collection-id }}" ]    || { echo "FAIL: smoke-collection-id is empty"; exit 1; }
+          [ -n "${{ steps.bootstrap.outputs.contract-collection-id }}" ] || { echo "FAIL: contract-collection-id is empty"; exit 1; }
+          echo "All collection outputs present – E2E passed."
+
+      - name: Cleanup – delete test workspace
+        if: always() && inputs.skip-cleanup != 'true'
+        env:
+          PMAK: ${{ secrets.SMOKE_NON_ORG_API_KEY }}
+          WORKSPACE_ID: ${{ steps.bootstrap.outputs.workspace-id }}
+        run: |
+          if [ -n "$WORKSPACE_ID" ]; then
+            curl -s -X DELETE -H "X-Api-Key: $PMAK" \
+              "https://api.getpostman.com/workspaces/$WORKSPACE_ID" > /dev/null || true
+            echo "Deleted workspace $WORKSPACE_ID"
+          else
+            echo "No workspace ID found – skipping cleanup"
+          fi

@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { stringify as stringifyYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { HttpError } from '../src/lib/http-error.js';
@@ -71,6 +71,7 @@ function createInputs(overrides: Partial<ResolvedInputs> = {}): ResolvedInputs {
     workspaceAdminUserIds: '101,102',
     repoUrl: 'https://github.com/postman-cs/bootstrap-action-test',
     specUrl: 'https://example.test/openapi.yaml',
+    openapiVersion: '',
     governanceMappingJson: '{"core-banking":"Core Banking"}',
     postmanApiKey: 'pmak-test',
     postmanAccessToken: 'postman-access-token',
@@ -830,7 +831,8 @@ describe('bootstrap action', () => {
     expect(postman.uploadSpec).toHaveBeenCalledWith(
       'ws-existing',
       'core-payments v1.1.2',
-      'openapi: 3.1.0'
+      'openapi: 3.1.0',
+      '3.1'
     );
     expect(result['spec-id']).toBe('spec-v112');
   });
@@ -1232,6 +1234,99 @@ describe('bootstrap action', () => {
     expect(lintSummary.errors).toBe(0);
   });
 
+  it('auto-detects openapi 3.1 from spec content when openapiVersion input is empty', async () => {
+    const { core } = createCoreStub();
+    const execStub = createExecStub();
+    const ioStub = createIoStub();
+    const postman = {
+      addAdminsToWorkspace: vi.fn().mockResolvedValue(undefined),
+      createWorkspace: vi.fn().mockResolvedValue({ id: 'ws-123' }),
+      findWorkspacesByName: vi.fn().mockResolvedValue([]),
+      generateCollection: vi.fn()
+        .mockResolvedValueOnce('col-baseline')
+        .mockResolvedValueOnce('col-smoke')
+        .mockResolvedValueOnce('col-contract'),
+      getAutoDerivedTeamId: vi.fn().mockResolvedValue('12345'),
+      getTeams: vi.fn().mockResolvedValue([]),
+      getWorkspaceGitRepoUrl: vi.fn().mockResolvedValue(null),
+      injectTests: vi.fn().mockResolvedValue(undefined),
+      inviteRequesterToWorkspace: vi.fn().mockResolvedValue(undefined),
+      tagCollection: vi.fn().mockResolvedValue(undefined),
+      uploadSpec: vi.fn().mockResolvedValue('spec-31'),
+      updateSpec: vi.fn().mockResolvedValue(undefined),
+      getSpecContent: vi.fn().mockResolvedValue(undefined)
+    };
+
+    await runBootstrap(
+      createInputs({ openapiVersion: '' }),
+      {
+        core,
+        exec: execStub,
+        io: ioStub,
+        postman,
+        specFetcher: vi.fn<typeof fetch>().mockResolvedValue(
+          new Response('openapi: 3.1.0\ninfo:\n  title: Test\n  version: 1.0.0\npaths: {}', {
+            status: 200
+          })
+        )
+      }
+    );
+
+    expect(postman.uploadSpec).toHaveBeenCalledWith(
+      'ws-123',
+      'core-payments',
+      expect.any(String),
+      '3.1'
+    );
+  });
+
+  it('uses explicit openapi-version override rather than auto-detecting from spec content', async () => {
+    const { core } = createCoreStub();
+    const execStub = createExecStub();
+    const ioStub = createIoStub();
+    const postman = {
+      addAdminsToWorkspace: vi.fn().mockResolvedValue(undefined),
+      createWorkspace: vi.fn().mockResolvedValue({ id: 'ws-123' }),
+      findWorkspacesByName: vi.fn().mockResolvedValue([]),
+      generateCollection: vi.fn()
+        .mockResolvedValueOnce('col-baseline')
+        .mockResolvedValueOnce('col-smoke')
+        .mockResolvedValueOnce('col-contract'),
+      getAutoDerivedTeamId: vi.fn().mockResolvedValue('12345'),
+      getTeams: vi.fn().mockResolvedValue([]),
+      getWorkspaceGitRepoUrl: vi.fn().mockResolvedValue(null),
+      injectTests: vi.fn().mockResolvedValue(undefined),
+      inviteRequesterToWorkspace: vi.fn().mockResolvedValue(undefined),
+      tagCollection: vi.fn().mockResolvedValue(undefined),
+      uploadSpec: vi.fn().mockResolvedValue('spec-30'),
+      updateSpec: vi.fn().mockResolvedValue(undefined),
+      getSpecContent: vi.fn().mockResolvedValue(undefined)
+    };
+
+    // Spec says 3.1 but explicit override is 3.0 — override wins.
+    await runBootstrap(
+      createInputs({ openapiVersion: '3.0' }),
+      {
+        core,
+        exec: execStub,
+        io: ioStub,
+        postman,
+        specFetcher: vi.fn<typeof fetch>().mockResolvedValue(
+          new Response('openapi: 3.1.0\ninfo:\n  title: Test\n  version: 1.0.0\npaths: {}', {
+            status: 200
+          })
+        )
+      }
+    );
+
+    expect(postman.uploadSpec).toHaveBeenCalledWith(
+      'ws-123',
+      'core-payments',
+      expect.any(String),
+      '3.0'
+    );
+  });
+
   it('normalizeSpecDocument adds summary from operationId or METHOD+path', () => {
     const warn = vi.fn();
     const withId = normalizeSpecDocument(
@@ -1273,6 +1368,70 @@ describe('bootstrap action', () => {
     expect(s.length).toBe(200);
     expect(s.endsWith('…')).toBe(true);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('truncated'));
+  });
+
+  it('normalizeSpecDocument normalises summaries in OAS 3.1 webhooks', () => {
+    const warn = vi.fn();
+    const out = normalizeSpecDocument(
+      JSON.stringify({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '1' },
+        paths: { '/pets': { get: { summary: 'List pets' } } },
+        webhooks: {
+          petAdopted: { post: { operationId: 'petAdoptedWebhook' } }
+        }
+      }),
+      warn
+    );
+    const doc = JSON.parse(out);
+    expect(doc.webhooks.petAdopted.post.summary).toBe('petAdoptedWebhook');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('operationId'));
+  });
+
+  it('normalizeSpecDocument falls back to METHOD+key for webhooks with no summary or operationId', () => {
+    const warn = vi.fn();
+    const out = normalizeSpecDocument(
+      JSON.stringify({
+        openapi: '3.1.0',
+        info: { title: 'T', version: '1' },
+        paths: {},
+        webhooks: { userCreated: { post: {} } }
+      }),
+      warn
+    );
+    const doc = JSON.parse(out);
+    expect(doc.webhooks.userCreated.post.summary).toBe('POST userCreated');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('method + path'));
+  });
+
+  it('normalizeSpecDocument normalises summaries in OAS 3.1 webhooks (YAML input)', () => {
+    const warn = vi.fn();
+    const yamlInput = stringifyYaml({
+      openapi: '3.1.0',
+      info: { title: 'T', version: '1' },
+      paths: {},
+      webhooks: { orderPlaced: { post: { operationId: 'onOrderPlaced' } } }
+    });
+    const out = normalizeSpecDocument(yamlInput, warn);
+    const doc = parseYaml(out) as Record<string, unknown>;
+    const webhooks = doc.webhooks as Record<string, Record<string, Record<string, unknown>>>;
+    expect(webhooks.orderPlaced.post.summary).toBe('onOrderPlaced');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('operationId'));
+  });
+
+  it('normalizeSpecDocument ignores webhooks field when absent (OAS 3.0 spec)', () => {
+    const warn = vi.fn();
+    const out = normalizeSpecDocument(
+      JSON.stringify({
+        openapi: '3.0.3',
+        info: { title: 'T', version: '1' },
+        paths: { '/a': { get: { summary: 'Get A' } } }
+      }),
+      warn
+    );
+    const doc = JSON.parse(out);
+    expect(doc.webhooks).toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('forwards folderStrategy, nestedFolderHierarchy, and requestNameSource to generateCollection', async () => {

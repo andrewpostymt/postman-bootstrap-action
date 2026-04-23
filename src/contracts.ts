@@ -96,6 +96,12 @@ export const openAlphaActionContract: BetaActionContract = {
       description: 'HTTPS URL to the OpenAPI document.',
       required: true
     },
+    'openapi-version': {
+      description: 'OpenAPI specification version override (3.0 or 3.1). When not set, the version is auto-detected from the spec content.',
+      required: false,
+      default: '',
+      allowedValues: ['3.0', '3.1']
+    },
     'governance-mapping-json': {
       description: 'JSON map of business domain to governance group name.',
       required: false,
