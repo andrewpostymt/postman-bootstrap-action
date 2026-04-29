@@ -96,6 +96,12 @@ export const openAlphaActionContract: BetaActionContract = {
       description: 'HTTPS URL to the OpenAPI document.',
       required: true
     },
+    'openapi-version': {
+      description: 'OpenAPI specification version override (3.0 or 3.1). When not set, the version is auto-detected from the spec content.',
+      required: false,
+      default: '',
+      allowedValues: ['3.0', '3.1']
+    },
     'governance-mapping-json': {
       description: 'JSON map of business domain to governance group name.',
       required: false,
@@ -114,6 +120,23 @@ export const openAlphaActionContract: BetaActionContract = {
       required: false,
       default: 'bifrost',
       allowedValues: ['bifrost']
+    },
+    'folder-strategy': {
+      description: 'Folder organization strategy for generated collections.',
+      required: false,
+      default: 'Paths',
+      allowedValues: ['Paths', 'Tags']
+    },
+    'nested-folder-hierarchy': {
+      description: 'When folder-strategy is Tags, enables nested folder hierarchy. Has no effect when folder-strategy is Paths.',
+      required: false,
+      default: 'false'
+    },
+    'request-name-source': {
+      description: 'Determines how requests are named in generated collections. Fallback uses summary, operationId, description, or URL in order.',
+      required: false,
+      default: 'Fallback',
+      allowedValues: ['Fallback', 'URL']
     }
   },
   outputs: {

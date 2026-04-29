@@ -7,6 +7,7 @@ import { parse, stringify } from 'yaml';
 import { openAlphaActionContract } from './contracts.js';
 import { HttpError } from './lib/http-error.js';
 import { createInternalIntegrationAdapter, type InternalIntegrationAdapter } from './lib/postman/internal-integration-adapter.js';
+import { detectOpenApiVersion } from './lib/spec/detect-version.js';
 import { PostmanAssetsClient } from './lib/postman/postman-assets-client.js';
 import { resolveCanonicalWorkspaceSelection } from './lib/postman/workspace-selection.js';
 import { detectRepoContext } from './lib/repo/context.js';
@@ -32,10 +33,14 @@ export interface ResolvedInputs {
   teamId?: string;
   repoUrl?: string;
   specUrl: string;
+  openapiVersion: string;
   governanceMappingJson: string;
   postmanApiKey: string;
   postmanAccessToken?: string;
   integrationBackend: string;
+  folderStrategy: string;
+  nestedFolderHierarchy: boolean;
+  requestNameSource: string;
   githubRefName?: string;
   githubHeadRef?: string;
   githubRef?: string;
@@ -186,6 +191,18 @@ function parseSpecSyncMode(value: string | undefined): 'update' | 'version' {
   return 'update';
 }
 
+function resolveOpenapiVersion(value: string | undefined): string {
+  const allowed = openAlphaActionContract.inputs['openapi-version'].allowedValues ?? [];
+  const v = value?.trim() ?? '';
+  if (allowed.length > 0 && v && !allowed.includes(v)) {
+    throw new Error(
+      `Unsupported openapi-version "${v}". Supported values: ${allowed.join(', ')}`
+    );
+  }
+  // Empty string is intentional — signals auto-detect from spec content at runtime.
+  return v;
+}
+
 export function resolveInputs(
   env: NodeJS.ProcessEnv = process.env
 ): ResolvedInputs {
@@ -244,6 +261,7 @@ export function resolveInputs(
     teamId: getInput('team-id', env) || env.POSTMAN_TEAM_ID || '',
     repoUrl: repoContext.repoUrl || '',
     specUrl,
+    openapiVersion: resolveOpenapiVersion(getInput('openapi-version', env)),
     governanceMappingJson:
       getInput('governance-mapping-json', env) ??
       openAlphaActionContract.inputs['governance-mapping-json'].default ??
@@ -251,6 +269,15 @@ export function resolveInputs(
     postmanApiKey: getInput('postman-api-key', env) ?? '',
     postmanAccessToken: getInput('postman-access-token', env),
     integrationBackend,
+    folderStrategy:
+      getInput('folder-strategy', env) ??
+      openAlphaActionContract.inputs['folder-strategy'].default ??
+      'Paths',
+    nestedFolderHierarchy: parseBooleanInput(getInput('nested-folder-hierarchy', env), false),
+    requestNameSource:
+      getInput('request-name-source', env) ??
+      openAlphaActionContract.inputs['request-name-source'].default ??
+      'Fallback',
     githubRefName: env.GITHUB_REF_NAME,
     githubHeadRef: env.GITHUB_HEAD_REF,
     githubRef: env.GITHUB_REF,
@@ -334,7 +361,17 @@ export function readActionInputs(
     INPUT_POSTMAN_ACCESS_TOKEN: postmanAccessToken,
     INPUT_INTEGRATION_BACKEND:
       optionalInput(actionCore, 'integration-backend') ??
-      openAlphaActionContract.inputs['integration-backend'].default
+      openAlphaActionContract.inputs['integration-backend'].default,
+    INPUT_FOLDER_STRATEGY:
+      optionalInput(actionCore, 'folder-strategy') ??
+      openAlphaActionContract.inputs['folder-strategy'].default,
+    INPUT_NESTED_FOLDER_HIERARCHY:
+      optionalInput(actionCore, 'nested-folder-hierarchy') ??
+      openAlphaActionContract.inputs['nested-folder-hierarchy'].default,
+    INPUT_REQUEST_NAME_SOURCE:
+      optionalInput(actionCore, 'request-name-source') ??
+      openAlphaActionContract.inputs['request-name-source'].default,
+    INPUT_OPENAPI_VERSION: optionalInput(actionCore, 'openapi-version') ?? ''
   });
 
   return inputs;
@@ -569,11 +606,20 @@ export function normalizeSpecDocument(raw: string, warn: (msg: string) => void):
     return raw;
   }
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return raw;
-  const paths = (doc as Record<string, unknown>).paths;
+  const root = doc as Record<string, unknown>;
+  const paths = root.paths;
   if (!paths || typeof paths !== 'object' || Array.isArray(paths)) return raw;
 
+  // OAS 3.1 webhooks share the same path-item structure as paths.
+  const webhooks = root.webhooks;
+  const operationMaps: Record<string, unknown>[] = [paths as Record<string, unknown>];
+  if (webhooks && typeof webhooks === 'object' && !Array.isArray(webhooks)) {
+    operationMaps.push(webhooks as Record<string, unknown>);
+  }
+
   let changed = false;
-  for (const [pathKey, pathItem] of Object.entries(paths as Record<string, unknown>)) {
+  for (const operationMap of operationMaps)
+  for (const [pathKey, pathItem] of Object.entries(operationMap)) {
     if (!pathItem || typeof pathItem !== 'object' || Array.isArray(pathItem)) continue;
     const item = pathItem as Record<string, unknown>;
     for (const method of Object.keys(item)) {
@@ -884,8 +930,26 @@ export async function runBootstrap(
         dependencies.core.warning(msg)
       );
       validateSpecStructure(document);
+      // Detect the OpenAPI version from the spec content; use the explicit
+      // input only when set, so customers rarely need to configure this.
+      const detectedVersion = detectOpenApiVersion(document);
+      const effectiveOpenapiVersion = inputs.openapiVersion || detectedVersion;
+      if (inputs.openapiVersion) {
+        dependencies.core.info(
+          `Using explicit openapi-version override: ${inputs.openapiVersion}`
+        );
+      } else {
+        dependencies.core.info(
+          `Auto-detected OpenAPI version from spec content: ${detectedVersion}`
+        );
+      }
       if (specId) {
         previousSpecContent = await dependencies.postman.getSpecContent(specId);
+        dependencies.core.info(
+          `Updating existing spec ${specId} (detected version: ${effectiveOpenapiVersion}). ` +
+          `Note: the spec type (OPENAPI:3.0 / OPENAPI:3.1) is set at creation and cannot be changed on update. ` +
+          `If you changed OpenAPI versions, clear the spec-id input to create a fresh spec.`
+        );
         await dependencies.postman.updateSpec(specId, document, workspaceId);
       } else {
         specId = await dependencies.postman.uploadSpec(
@@ -894,7 +958,8 @@ export async function runBootstrap(
             inputs,
             inputs.specSyncMode === 'version' ? releaseLabel : undefined
           ),
-          document
+          document,
+          effectiveOpenapiVersion
         );
       }
       outputs['spec-id'] = specId;
@@ -965,7 +1030,10 @@ export async function runBootstrap(
         const generatedCollectionId = await dependencies.postman.generateCollection(
           outputs['spec-id'],
           assetProjectName,
-          prefix
+          prefix,
+          inputs.folderStrategy,
+          inputs.nestedFolderHierarchy,
+          inputs.requestNameSource
         );
 
         if (!existingCollectionId) {
@@ -1012,7 +1080,10 @@ export async function runBootstrap(
           outputs['baseline-collection-id'] = await dependencies.postman.generateCollection(
             outputs['spec-id'],
             assetProjectName,
-            '[Baseline]'
+            '[Baseline]',
+            inputs.folderStrategy,
+            inputs.nestedFolderHierarchy,
+            inputs.requestNameSource
           );
         } else {
           dependencies.core.info(
@@ -1023,7 +1094,10 @@ export async function runBootstrap(
           outputs['smoke-collection-id'] = await dependencies.postman.generateCollection(
             outputs['spec-id'],
             assetProjectName,
-            '[Smoke]'
+            '[Smoke]',
+            inputs.folderStrategy,
+            inputs.nestedFolderHierarchy,
+            inputs.requestNameSource
           );
         } else {
           dependencies.core.info(
@@ -1034,7 +1108,10 @@ export async function runBootstrap(
           outputs['contract-collection-id'] = await dependencies.postman.generateCollection(
             outputs['spec-id'],
             assetProjectName,
-            '[Contract]'
+            '[Contract]',
+            inputs.folderStrategy,
+            inputs.nestedFolderHierarchy,
+            inputs.requestNameSource
           );
         } else {
           dependencies.core.info(

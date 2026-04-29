@@ -56,6 +56,10 @@ inputs:
   spec-url:
     description: URL to the OpenAPI document to bootstrap
     required: true
+  openapi-version:
+    description: OpenAPI specification version override (3.0 or 3.1). When not set, the version is auto-detected from the spec content.
+    required: false
+    default: ''
   governance-mapping-json:
     description: JSON map of business domain to governance group name
     required: false
@@ -70,6 +74,18 @@ inputs:
     description: Integration backend for downstream workspace connectivity
     required: false
     default: bifrost
+  folder-strategy:
+    description: Folder organization strategy for generated collections (Paths or Tags)
+    required: false
+    default: Paths
+  nested-folder-hierarchy:
+    description: When folder-strategy is Tags, enables nested folder hierarchy
+    required: false
+    default: 'false'
+  request-name-source:
+    description: Determines how requests are named in generated collections (Fallback or URL)
+    required: false
+    default: Fallback
 outputs:
   workspace-id:
     description: Postman workspace ID

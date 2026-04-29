@@ -20,11 +20,31 @@ jobs:
             folder-strategy: 'Paths'
             nested-folder-hierarchy: 'false'
             request-name-source: 'Fallback'
+            spec-fixture: 'e2e-spec.yaml'
 
           - name: 'Tags + nested hierarchy + URL names'
             folder-strategy: 'Tags'
             nested-folder-hierarchy: 'true'
             request-name-source: 'URL'
+            spec-fixture: 'e2e-spec.yaml'
+
+          - name: 'OAS 3.1 auto-detect (Paths + Fallback)'
+            folder-strategy: 'Paths'
+            nested-folder-hierarchy: 'false'
+            request-name-source: 'Fallback'
+            spec-fixture: 'e2e-spec-oas31.yaml'
+
+          - name: 'OAS 3.1 Petstore (real-world multi-file JSON spec)'
+            folder-strategy: 'Paths'
+            nested-folder-hierarchy: 'false'
+            request-name-source: 'Fallback'
+            spec-fixture: 'petstore-oas31.json'
+
+          - name: 'OAS 3.1 Petstore (single-file JSON spec)'
+            folder-strategy: 'Paths'
+            nested-folder-hierarchy: 'false'
+            request-name-source: 'Fallback'
+            spec-fixture: 'petstore-oas31-single-file.json'
 
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +62,7 @@ jobs:
         uses: ./
         with:
           project-name: 'e2e-${{ matrix.folder-strategy }}-${{ github.run_id }}'
-          spec-url: 'https://raw.githubusercontent.com/andrewpostymt/postman-bootstrap-action/${{ github.ref_name }}/tests/fixtures/e2e-spec.yaml'
+          spec-url: 'https://raw.githubusercontent.com/andrewpostymt/postman-bootstrap-action/${{ github.ref_name }}/tests/fixtures/${{ matrix.spec-fixture }}'
           postman-api-key: ${{ secrets.SMOKE_NON_ORG_API_KEY }}
           folder-strategy: ${{ matrix.folder-strategy }}
           nested-folder-hierarchy: ${{ matrix.nested-folder-hierarchy }}

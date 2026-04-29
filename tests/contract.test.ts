@@ -8,7 +8,7 @@ import {
   contractInputNames,
   contractOutputNames
 } from '../src/contracts.js';
-import { createPlannedOutputs, resolveInputs } from '../src/index.js';
+import { createPlannedOutputs, readActionInputs, resolveInputs } from '../src/index.js';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const actionManifest = parse(
@@ -68,6 +68,22 @@ describe('open-alpha action contract', () => {
 
   });
 
+  it('defaults collection generation options in contract, manifest, and runtime', () => {
+    expect(openAlphaActionContract.inputs['folder-strategy'].default).toBe('Paths');
+    expect(openAlphaActionContract.inputs['folder-strategy'].allowedValues).toEqual(['Paths', 'Tags']);
+    expect(actionManifest.inputs['folder-strategy'].default).toBe('Paths');
+    expect(resolveInputs({}).folderStrategy).toBe('Paths');
+
+    expect(openAlphaActionContract.inputs['nested-folder-hierarchy'].default).toBe('false');
+    expect(actionManifest.inputs['nested-folder-hierarchy'].default).toBe('false');
+    expect(resolveInputs({}).nestedFolderHierarchy).toBe(false);
+
+    expect(openAlphaActionContract.inputs['request-name-source'].default).toBe('Fallback');
+    expect(openAlphaActionContract.inputs['request-name-source'].allowedValues).toEqual(['Fallback', 'URL']);
+    expect(actionManifest.inputs['request-name-source'].default).toBe('Fallback');
+    expect(resolveInputs({}).requestNameSource).toBe('Fallback');
+  });
+
   it('rejects unsupported integration backends during input resolution', () => {
     expect(() =>
       resolveInputs({
@@ -82,6 +98,47 @@ describe('open-alpha action contract', () => {
         'INPUT_SPEC_URL': 'http://example.com/spec.yaml'
       })
     ).toThrow(/spec-url must be a valid HTTPS URL/);
+  });
+
+  it('defaults openapi-version to empty string in contract, manifest, and runtime (auto-detect)', () => {
+    expect(openAlphaActionContract.inputs['openapi-version'].default).toBe('');
+    expect(openAlphaActionContract.inputs['openapi-version'].allowedValues).toEqual(['3.0', '3.1']);
+    expect(actionManifest.inputs['openapi-version'].default).toBe('');
+    // Empty string signals auto-detect from spec content at runtime.
+    expect(resolveInputs({}).openapiVersion).toBe('');
+  });
+
+  it('accepts explicit openapi-version 3.1 override at runtime', () => {
+    const inputs = resolveInputs({ INPUT_OPENAPI_VERSION: '3.1' });
+    expect(inputs.openapiVersion).toBe('3.1');
+  });
+
+  it('accepts explicit openapi-version 3.0 override at runtime', () => {
+    const inputs = resolveInputs({ INPUT_OPENAPI_VERSION: '3.0' });
+    expect(inputs.openapiVersion).toBe('3.0');
+  });
+
+  it('rejects unsupported openapi-version values', () => {
+    expect(() =>
+      resolveInputs({ INPUT_OPENAPI_VERSION: '2.0' })
+    ).toThrow(/Unsupported openapi-version/);
+  });
+
+  it('readActionInputs explicitly wires openapi-version from core.getInput', () => {
+    const coreStub = {
+      getInput: (name: string) => {
+        const map: Record<string, string> = {
+          'project-name': 'my-api',
+          'spec-url': 'https://example.com/openapi.yaml',
+          'postman-api-key': 'pmak-test',
+          'openapi-version': '3.1'
+        };
+        return map[name] ?? '';
+      },
+      setSecret: () => {}
+    };
+    const inputs = readActionInputs(coreStub);
+    expect(inputs.openapiVersion).toBe('3.1');
   });
 
   it('documents the retained bootstrap steps and removed internal-only behavior', () => {

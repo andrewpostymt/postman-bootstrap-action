@@ -1,9 +1,9 @@
-openapi: "3.0.3"
+openapi: "3.1.0"
 info:
-  title: E2E Test API
+  title: E2E Test API (OAS 3.1)
   version: "1.0.0"
   description: |
-    Minimal OpenAPI spec used for E2E testing the postman-bootstrap-action.
+    Minimal OpenAPI 3.1 spec used for testing OAS 3.1 support in postman-bootstrap-action.
 
     ## Service Level Agreement
     This API targets 99.9% uptime with a p99 response time under 500ms.
@@ -63,8 +63,6 @@ paths:
     get:
       summary: Get a pet by ID
       operationId: getPet
-      tags:
-        - Pets
       parameters:
         - name: petId
           in: path
@@ -86,68 +84,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-    delete:
-      summary: Delete a pet
-      operationId: deletePet
-      tags:
-        - Pets
-      parameters:
-        - name: petId
-          in: path
-          required: true
-          schema:
-            $ref: "#/components/schemas/ResourceId"
-      responses:
-        "204":
-          description: Pet deleted
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /owners:
-    get:
-      summary: List all owners
-      operationId: listOwners
-      tags:
-        - Owners
+# OAS 3.1 webhooks field (equivalent to paths but for inbound callbacks)
+webhooks:
+  petAdopted:
+    post:
+      summary: Pet adopted webhook
+      operationId: petAdoptedWebhook
+      requestBody:
+        description: Payload sent when a pet is adopted
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Pet"
       responses:
         "200":
-          description: A list of owners
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Owner"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /owners/{ownerId}:
-    get:
-      summary: Get an owner by ID
-      operationId: getOwner
-      tags:
-        - Owners
-      parameters:
-        - name: ownerId
-          in: path
-          required: true
-          schema:
-            $ref: "#/components/schemas/ResourceId"
-      responses:
-        "200":
-          description: A single owner
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Owner"
-        "404":
-          description: Owner not found
+          description: Webhook received
         "500":
           description: Internal server error
           content:
@@ -162,8 +113,9 @@ components:
     ResourceName:
       type: string
       description: Human-readable resource name.
-    ResourceTag:
-      type: string
+    # OAS 3.1: type as array replaces nullable: true
+    NullableTag:
+      type: ["string", "null"]
       description: Optional classification tag.
     Pet:
       type: object
@@ -176,7 +128,7 @@ components:
         name:
           $ref: "#/components/schemas/ResourceName"
         tag:
-          $ref: "#/components/schemas/ResourceTag"
+          $ref: "#/components/schemas/NullableTag"
     NewPet:
       type: object
       required:
@@ -185,17 +137,7 @@ components:
         name:
           $ref: "#/components/schemas/ResourceName"
         tag:
-          $ref: "#/components/schemas/ResourceTag"
-    Owner:
-      type: object
-      required:
-        - id
-        - name
-      properties:
-        id:
-          $ref: "#/components/schemas/ResourceId"
-        name:
-          $ref: "#/components/schemas/ResourceName"
+          $ref: "#/components/schemas/NullableTag"
     Error:
       type: object
       required:

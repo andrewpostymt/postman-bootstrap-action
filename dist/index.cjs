@@ -28774,6 +28774,12 @@ var openAlphaActionContract = {
       description: "HTTPS URL to the OpenAPI document.",
       required: true
     },
+    "openapi-version": {
+      description: "OpenAPI specification version override (3.0 or 3.1). When not set, the version is auto-detected from the spec content.",
+      required: false,
+      default: "",
+      allowedValues: ["3.0", "3.1"]
+    },
     "governance-mapping-json": {
       description: "JSON map of business domain to governance group name.",
       required: false,
@@ -28792,6 +28798,23 @@ var openAlphaActionContract = {
       required: false,
       default: "bifrost",
       allowedValues: ["bifrost"]
+    },
+    "folder-strategy": {
+      description: "Folder organization strategy for generated collections.",
+      required: false,
+      default: "Paths",
+      allowedValues: ["Paths", "Tags"]
+    },
+    "nested-folder-hierarchy": {
+      description: "When folder-strategy is Tags, enables nested folder hierarchy. Has no effect when folder-strategy is Paths.",
+      required: false,
+      default: "false"
+    },
+    "request-name-source": {
+      description: "Determines how requests are named in generated collections. Fallback uses summary, operationId, description, or URL in order.",
+      required: false,
+      default: "Fallback",
+      allowedValues: ["Fallback", "URL"]
     }
   },
   outputs: {
@@ -29282,12 +29305,16 @@ var PostmanAssetsClient = class {
       })
     });
   }
-  async uploadSpec(workspaceId, projectName, specContent) {
+  async uploadSpec(workspaceId, projectName, specContent, openapiVersion = "3.0") {
+    if (openapiVersion !== "3.0" && openapiVersion !== "3.1") {
+      throw new Error(`uploadSpec: unsupported openapiVersion "${openapiVersion}". Expected '3.0' or '3.1'.`);
+    }
+    const specType = openapiVersion === "3.1" ? "OPENAPI:3.1" : "OPENAPI:3.0";
     const response = await this.request(`/specs?workspaceId=${workspaceId}`, {
       method: "POST",
       body: JSON.stringify({
         name: projectName,
-        type: "OPENAPI:3.0",
+        type: specType,
         files: [{ path: "index.yaml", content: specContent }]
       })
     });
@@ -29318,11 +29345,13 @@ var PostmanAssetsClient = class {
       return void 0;
     }
   }
-  async generateCollection(specId, projectName, prefix) {
+  async generateCollection(specId, projectName, prefix, folderStrategy, nestedFolderHierarchy, requestNameSource) {
     const payload = {
       name: `${prefix} ${projectName}`,
       options: {
-        requestNameSource: "Fallback"
+        requestNameSource,
+        folderStrategy,
+        ...folderStrategy === "Tags" ? { nestedFolderHierarchy } : {}
       }
     };
     const extractUid = (data) => {
@@ -29942,6 +29971,23 @@ function createInternalIntegrationAdapter(options) {
   return new BifrostInternalIntegrationAdapter(options);
 }
 
+// src/lib/spec/detect-version.ts
+function detectOpenApiVersion(content) {
+  try {
+    const parsed = JSON.parse(content);
+    const raw = typeof parsed.openapi === "string" ? parsed.openapi : "";
+    if (raw) return toMajorMinor(raw);
+  } catch {
+  }
+  const m = content.match(/^openapi:\s*["']?(3\.\d+(?:\.\d+)?)["']?/m);
+  if (m?.[1]) return toMajorMinor(m[1]);
+  return "3.0";
+}
+function toMajorMinor(raw) {
+  const parts = raw.split(".");
+  return parts.length >= 2 ? `${parts[0]}.${parts[1]}` : "3.0";
+}
+
 // src/lib/postman/workspace-selection.ts
 function chooseCanonicalWorkspace(args) {
   const repoWorkspaceId = String(args.repoWorkspaceId || "").trim();
@@ -30120,6 +30166,16 @@ function parseSpecSyncMode(value) {
   }
   return "update";
 }
+function resolveOpenapiVersion(value) {
+  const allowed = openAlphaActionContract.inputs["openapi-version"].allowedValues ?? [];
+  const v = value?.trim() ?? "";
+  if (allowed.length > 0 && v && !allowed.includes(v)) {
+    throw new Error(
+      `Unsupported openapi-version "${v}". Supported values: ${allowed.join(", ")}`
+    );
+  }
+  return v;
+}
 function resolveInputs(env = process.env) {
   const repoContext = detectRepoContext(
     {
@@ -30164,10 +30220,14 @@ function resolveInputs(env = process.env) {
     teamId: getInput("team-id", env) || env.POSTMAN_TEAM_ID || "",
     repoUrl: repoContext.repoUrl || "",
     specUrl,
+    openapiVersion: resolveOpenapiVersion(getInput("openapi-version", env)),
     governanceMappingJson: getInput("governance-mapping-json", env) ?? openAlphaActionContract.inputs["governance-mapping-json"].default ?? "{}",
     postmanApiKey: getInput("postman-api-key", env) ?? "",
     postmanAccessToken: getInput("postman-access-token", env),
     integrationBackend,
+    folderStrategy: getInput("folder-strategy", env) ?? openAlphaActionContract.inputs["folder-strategy"].default ?? "Paths",
+    nestedFolderHierarchy: parseBooleanInput(getInput("nested-folder-hierarchy", env), false),
+    requestNameSource: getInput("request-name-source", env) ?? openAlphaActionContract.inputs["request-name-source"].default ?? "Fallback",
     githubRefName: env.GITHUB_REF_NAME,
     githubHeadRef: env.GITHUB_HEAD_REF,
     githubRef: env.GITHUB_REF,
@@ -30230,7 +30290,11 @@ function readActionInputs(actionCore) {
     INPUT_GOVERNANCE_MAPPING_JSON: optionalInput(actionCore, "governance-mapping-json") ?? openAlphaActionContract.inputs["governance-mapping-json"].default,
     INPUT_POSTMAN_API_KEY: postmanApiKey,
     INPUT_POSTMAN_ACCESS_TOKEN: postmanAccessToken,
-    INPUT_INTEGRATION_BACKEND: optionalInput(actionCore, "integration-backend") ?? openAlphaActionContract.inputs["integration-backend"].default
+    INPUT_INTEGRATION_BACKEND: optionalInput(actionCore, "integration-backend") ?? openAlphaActionContract.inputs["integration-backend"].default,
+    INPUT_FOLDER_STRATEGY: optionalInput(actionCore, "folder-strategy") ?? openAlphaActionContract.inputs["folder-strategy"].default,
+    INPUT_NESTED_FOLDER_HIERARCHY: optionalInput(actionCore, "nested-folder-hierarchy") ?? openAlphaActionContract.inputs["nested-folder-hierarchy"].default,
+    INPUT_REQUEST_NAME_SOURCE: optionalInput(actionCore, "request-name-source") ?? openAlphaActionContract.inputs["request-name-source"].default,
+    INPUT_OPENAPI_VERSION: optionalInput(actionCore, "openapi-version") ?? ""
   });
   return inputs;
 }
@@ -30396,43 +30460,50 @@ function normalizeSpecDocument(raw, warn) {
     return raw;
   }
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) return raw;
-  const paths = doc.paths;
+  const root = doc;
+  const paths = root.paths;
   if (!paths || typeof paths !== "object" || Array.isArray(paths)) return raw;
+  const webhooks = root.webhooks;
+  const operationMaps = [paths];
+  if (webhooks && typeof webhooks === "object" && !Array.isArray(webhooks)) {
+    operationMaps.push(webhooks);
+  }
   let changed = false;
-  for (const [pathKey, pathItem] of Object.entries(paths)) {
-    if (!pathItem || typeof pathItem !== "object" || Array.isArray(pathItem)) continue;
-    const item = pathItem;
-    for (const method of Object.keys(item)) {
-      if (!SPEC_HTTP_METHODS.has(method.toLowerCase())) continue;
-      const op = item[method];
-      if (!op || typeof op !== "object" || Array.isArray(op)) continue;
-      const o = op;
-      const prev = o.summary;
-      let s = typeof o.summary === "string" ? o.summary.trim() : "";
-      const M = method.toUpperCase();
-      if (!s && typeof o.operationId === "string" && o.operationId.trim()) {
-        s = o.operationId.trim();
-        warn(`Spec normalization: ${M} ${pathKey} \u2014 missing summary; using operationId.`);
-      }
-      if (!s) {
-        s = `${M} ${pathKey}`;
-        warn(
-          `Spec normalization: ${M} ${pathKey} \u2014 missing summary and operationId; using method + path.`
-        );
-      }
-      if (s.length > SPEC_SUMMARY_MAX_LEN) {
-        const before = s.length;
-        s = `${s.slice(0, SPEC_SUMMARY_MAX_LEN - 1)}\u2026`;
-        warn(
-          `Spec normalization: ${M} ${pathKey} \u2014 summary truncated from ${before} to ${SPEC_SUMMARY_MAX_LEN} characters.`
-        );
-      }
-      if (prev !== s && (typeof prev !== "string" || prev.trim() !== s)) {
-        o.summary = s;
-        changed = true;
+  for (const operationMap of operationMaps)
+    for (const [pathKey, pathItem] of Object.entries(operationMap)) {
+      if (!pathItem || typeof pathItem !== "object" || Array.isArray(pathItem)) continue;
+      const item = pathItem;
+      for (const method of Object.keys(item)) {
+        if (!SPEC_HTTP_METHODS.has(method.toLowerCase())) continue;
+        const op = item[method];
+        if (!op || typeof op !== "object" || Array.isArray(op)) continue;
+        const o = op;
+        const prev = o.summary;
+        let s = typeof o.summary === "string" ? o.summary.trim() : "";
+        const M = method.toUpperCase();
+        if (!s && typeof o.operationId === "string" && o.operationId.trim()) {
+          s = o.operationId.trim();
+          warn(`Spec normalization: ${M} ${pathKey} \u2014 missing summary; using operationId.`);
+        }
+        if (!s) {
+          s = `${M} ${pathKey}`;
+          warn(
+            `Spec normalization: ${M} ${pathKey} \u2014 missing summary and operationId; using method + path.`
+          );
+        }
+        if (s.length > SPEC_SUMMARY_MAX_LEN) {
+          const before = s.length;
+          s = `${s.slice(0, SPEC_SUMMARY_MAX_LEN - 1)}\u2026`;
+          warn(
+            `Spec normalization: ${M} ${pathKey} \u2014 summary truncated from ${before} to ${SPEC_SUMMARY_MAX_LEN} characters.`
+          );
+        }
+        if (prev !== s && (typeof prev !== "string" || prev.trim() !== s)) {
+          o.summary = s;
+          changed = true;
+        }
       }
     }
-  }
   if (!changed) return raw;
   return asJson ? `${JSON.stringify(doc, null, 2)}
 ` : `${(0, import_yaml.stringify)(doc, { lineWidth: 0 })}
@@ -30677,8 +30748,22 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
         (msg) => dependencies.core.warning(msg)
       );
       validateSpecStructure(document);
+      const detectedVersion = detectOpenApiVersion(document);
+      const effectiveOpenapiVersion = inputs.openapiVersion || detectedVersion;
+      if (inputs.openapiVersion) {
+        dependencies.core.info(
+          `Using explicit openapi-version override: ${inputs.openapiVersion}`
+        );
+      } else {
+        dependencies.core.info(
+          `Auto-detected OpenAPI version from spec content: ${detectedVersion}`
+        );
+      }
       if (specId) {
         previousSpecContent = await dependencies.postman.getSpecContent(specId);
+        dependencies.core.info(
+          `Updating existing spec ${specId} (detected version: ${effectiveOpenapiVersion}). Note: the spec type (OPENAPI:3.0 / OPENAPI:3.1) is set at creation and cannot be changed on update. If you changed OpenAPI versions, clear the spec-id input to create a fresh spec.`
+        );
         await dependencies.postman.updateSpec(specId, document, workspaceId);
       } else {
         specId = await dependencies.postman.uploadSpec(
@@ -30687,7 +30772,8 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
             inputs,
             inputs.specSyncMode === "version" ? releaseLabel : void 0
           ),
-          document
+          document,
+          effectiveOpenapiVersion
         );
       }
       outputs["spec-id"] = specId;
@@ -30742,7 +30828,10 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
         const generatedCollectionId = await dependencies.postman.generateCollection(
           outputs["spec-id"],
           assetProjectName,
-          prefix
+          prefix,
+          inputs.folderStrategy,
+          inputs.nestedFolderHierarchy,
+          inputs.requestNameSource
         );
         if (!existingCollectionId) {
           dependencies.core.info(
@@ -30784,7 +30873,10 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
           outputs["baseline-collection-id"] = await dependencies.postman.generateCollection(
             outputs["spec-id"],
             assetProjectName,
-            "[Baseline]"
+            "[Baseline]",
+            inputs.folderStrategy,
+            inputs.nestedFolderHierarchy,
+            inputs.requestNameSource
           );
         } else {
           dependencies.core.info(
@@ -30795,7 +30887,10 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
           outputs["smoke-collection-id"] = await dependencies.postman.generateCollection(
             outputs["spec-id"],
             assetProjectName,
-            "[Smoke]"
+            "[Smoke]",
+            inputs.folderStrategy,
+            inputs.nestedFolderHierarchy,
+            inputs.requestNameSource
           );
         } else {
           dependencies.core.info(
@@ -30806,7 +30901,10 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
           outputs["contract-collection-id"] = await dependencies.postman.generateCollection(
             outputs["spec-id"],
             assetProjectName,
-            "[Contract]"
+            "[Contract]",
+            inputs.folderStrategy,
+            inputs.nestedFolderHierarchy,
+            inputs.requestNameSource
           );
         } else {
           dependencies.core.info(
