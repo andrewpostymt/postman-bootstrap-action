@@ -96,6 +96,10 @@ Before upload to Spec Hub, the action parses JSON or YAML OpenAPI documents and 
 
 This runs in `src/index.ts` before upload. If nothing under `paths` needs changing, the original document bytes are preserved. When normalization runs, the spec is re-serialized (JSON stays JSON; YAML stays YAML). Each fix emits a **warning** in the Actions log so you can improve the source spec over time. Invalid documents that cannot be parsed are left unchanged and a warning is logged.
 
+### OpenAPI spec URL fetch safety
+
+The root `spec-url` must be HTTPS and is fetched with pinned DNS resolution. The action blocks credential-bearing URLs, localhost/private/link-local/internal destinations, unsafe redirects, DNS rebinding attempts, and oversized OpenAPI resources before uploading content to Spec Hub. Root fetches are capped at 25 MiB, and fetch errors redact URL credentials, query strings, and fragments before logging.
+
 ## Usage
 
 ```yaml
