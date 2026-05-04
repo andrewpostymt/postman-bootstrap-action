@@ -8,6 +8,7 @@ import { openAlphaActionContract } from './contracts.js';
 import { HttpError } from './lib/http-error.js';
 import { createInternalIntegrationAdapter, type InternalIntegrationAdapter } from './lib/postman/internal-integration-adapter.js';
 import { detectOpenApiVersion } from './lib/spec/detect-version.js';
+import { classifySafeFetchRetryability, safeFetchText } from './lib/spec/safe-spec-fetch.js';
 import { PostmanAssetsClient } from './lib/postman/postman-assets-client.js';
 import { resolveCanonicalWorkspaceSelection } from './lib/postman/workspace-selection.js';
 import { detectRepoContext } from './lib/repo/context.js';
@@ -497,12 +498,21 @@ export async function lintSpecViaCli(
   };
 }
 
+function shouldRetrySpecFetch(error: unknown): boolean {
+  const retryability = classifySafeFetchRetryability(error);
+  return retryability === 'retryable' || retryability === 'unknown';
+}
+
 async function fetchSpecDocument(
   specUrl: string,
   specFetcher: typeof fetch
 ): Promise<string> {
   return retry(
     async () => {
+      if (specFetcher === fetch) {
+        return safeFetchText(specUrl);
+      }
+
       const response = await specFetcher(specUrl, {
         headers: {
           'User-Agent': 'postman-bootstrap-action'
@@ -517,7 +527,8 @@ async function fetchSpecDocument(
     },
     {
       maxAttempts: 3,
-      delayMs: 3000
+      delayMs: 3000,
+      shouldRetry: shouldRetrySpecFetch
     }
   );
 }
