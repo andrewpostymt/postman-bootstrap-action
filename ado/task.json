@@ -30,6 +30,14 @@
       "helpMarkDown": "HTTPS URL to the OpenAPI document to bootstrap."
     },
     {
+      "name": "spec_path",
+      "type": "string",
+      "label": "Spec Path",
+      "defaultValue": "",
+      "required": false,
+      "helpMarkDown": "Local filesystem path to the OpenAPI document (relative to the workspace). Provide either specUrl or specPath."
+    },
+    {
       "name": "postman_api_key",
       "type": "string",
       "label": "Postman API Key",
@@ -201,7 +209,7 @@
       "defaultValue": "Fallback",
       "helpMarkDown": "How requests are named in generated collections.",
       "options": {
-        "Fallback": "Fallback (summary → operationId → URL)",
+        "Fallback": "Fallback (summary \u2192 operationId \u2192 URL)",
         "URL": "URL"
       }
     },
@@ -231,15 +239,42 @@
     }
   ],
   "outputVariables": [
-    { "name": "workspaceId",            "description": "Postman workspace ID" },
-    { "name": "workspaceUrl",           "description": "Postman workspace URL" },
-    { "name": "workspaceName",          "description": "Postman workspace name" },
-    { "name": "specId",                 "description": "Uploaded Postman spec ID" },
-    { "name": "baselineCollectionId",   "description": "Baseline collection ID" },
-    { "name": "smokeCollectionId",      "description": "Smoke collection ID" },
-    { "name": "contractCollectionId",   "description": "Contract collection ID" },
-    { "name": "collectionsJson",        "description": "JSON summary of generated collections" },
-    { "name": "lintSummaryJson",        "description": "JSON summary of lint errors and warnings" }
+    {
+      "name": "workspaceId",
+      "description": "Postman workspace ID"
+    },
+    {
+      "name": "workspaceUrl",
+      "description": "Postman workspace URL"
+    },
+    {
+      "name": "workspaceName",
+      "description": "Postman workspace name"
+    },
+    {
+      "name": "specId",
+      "description": "Uploaded Postman spec ID"
+    },
+    {
+      "name": "baselineCollectionId",
+      "description": "Baseline collection ID"
+    },
+    {
+      "name": "smokeCollectionId",
+      "description": "Smoke collection ID"
+    },
+    {
+      "name": "contractCollectionId",
+      "description": "Contract collection ID"
+    },
+    {
+      "name": "collectionsJson",
+      "description": "JSON summary of generated collections"
+    },
+    {
+      "name": "lintSummaryJson",
+      "description": "JSON summary of lint errors and warnings"
+    }
   ],
   "execution": {
     "Node20_1": {
