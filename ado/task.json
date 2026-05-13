@@ -1,0 +1,249 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/azure-pipelines-task-lib/master/tasks.schema.json",
+  "id": "a3b5c7d9-e1f2-4a6b-8c0d-2e4f6a8b0c2d",
+  "name": "PostmanBootstrap",
+  "friendlyName": "Postman Bootstrap",
+  "description": "Bootstrap a Postman workspace, API spec, and test collections from an OpenAPI specification.",
+  "helpMarkDown": "See [postman-bootstrap-action](https://github.com/postman-cs/postman-bootstrap-action) for full documentation.",
+  "category": "Deploy",
+  "author": "Postman CSE",
+  "version": {
+    "Major": 0,
+    "Minor": 11,
+    "Patch": 0
+  },
+  "inputs": [
+    {
+      "name": "project_name",
+      "type": "string",
+      "label": "Project Name",
+      "required": true,
+      "defaultValue": "",
+      "helpMarkDown": "Service project name used to name the Postman workspace and collections."
+    },
+    {
+      "name": "spec_url",
+      "type": "string",
+      "label": "Spec URL",
+      "required": true,
+      "defaultValue": "",
+      "helpMarkDown": "HTTPS URL to the OpenAPI document to bootstrap."
+    },
+    {
+      "name": "postman_api_key",
+      "type": "string",
+      "label": "Postman API Key",
+      "required": true,
+      "defaultValue": "",
+      "helpMarkDown": "Postman API key. **Store as a secret.** Reference from a secret pipeline variable or Key Vault-linked variable group, e.g. `$(POSTMAN-API-KEY)`."
+    },
+    {
+      "name": "postman_access_token",
+      "type": "string",
+      "label": "Postman Access Token",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Postman access token for governance and workspace mutations. **Store as a secret.** e.g. `$(POSTMAN-ACCESS-TOKEN)`."
+    },
+    {
+      "name": "workspace_id",
+      "type": "string",
+      "label": "Workspace ID",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Existing Postman workspace ID to reuse across runs."
+    },
+    {
+      "name": "spec_id",
+      "type": "string",
+      "label": "Spec ID",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Existing Postman spec ID to update instead of creating a new one."
+    },
+    {
+      "name": "baseline_collection_id",
+      "type": "string",
+      "label": "Baseline Collection ID",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Existing baseline collection ID to refresh in place."
+    },
+    {
+      "name": "smoke_collection_id",
+      "type": "string",
+      "label": "Smoke Collection ID",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Existing smoke collection ID to refresh in place."
+    },
+    {
+      "name": "contract_collection_id",
+      "type": "string",
+      "label": "Contract Collection ID",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Existing contract collection ID to refresh in place."
+    },
+    {
+      "name": "release_label",
+      "type": "string",
+      "label": "Release Label",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Release label for versioned specs and collections (e.g. a tag or branch name)."
+    },
+    {
+      "name": "domain",
+      "type": "string",
+      "label": "Domain",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Business domain for the service, used for governance group assignment."
+    },
+    {
+      "name": "domain_code",
+      "type": "string",
+      "label": "Domain Code",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Short prefix used in workspace naming, e.g. `PLAT`."
+    },
+    {
+      "name": "requester_email",
+      "type": "string",
+      "label": "Requester Email",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Requester email address for audit context."
+    },
+    {
+      "name": "workspace_admin_user_ids",
+      "type": "string",
+      "label": "Workspace Admin User IDs",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Comma-separated Postman user IDs to add as workspace admins."
+    },
+    {
+      "name": "workspace_team_id",
+      "type": "string",
+      "label": "Workspace Team ID",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "Numeric sub-team ID for org-mode workspace creation. Required when the API key belongs to an org with multiple sub-teams."
+    },
+    {
+      "name": "governance_mapping_json",
+      "type": "string",
+      "label": "Governance Mapping JSON",
+      "required": false,
+      "defaultValue": "{}",
+      "helpMarkDown": "JSON map of business domain to governance group name."
+    },
+    {
+      "name": "sync_examples",
+      "type": "boolean",
+      "label": "Sync Examples",
+      "required": false,
+      "defaultValue": "true",
+      "helpMarkDown": "Enable example syncing between the linked spec and collections."
+    },
+    {
+      "name": "nested_folder_hierarchy",
+      "type": "boolean",
+      "label": "Nested Folder Hierarchy",
+      "required": false,
+      "defaultValue": "false",
+      "helpMarkDown": "When folder strategy is Tags, enables nested folder hierarchy."
+    },
+    {
+      "name": "collection_sync_mode",
+      "type": "pickList",
+      "label": "Collection Sync Mode",
+      "required": false,
+      "defaultValue": "refresh",
+      "helpMarkDown": "Collection lifecycle policy.",
+      "options": {
+        "refresh": "Refresh (overwrite in place)",
+        "version": "Version (create new)"
+      }
+    },
+    {
+      "name": "spec_sync_mode",
+      "type": "pickList",
+      "label": "Spec Sync Mode",
+      "required": false,
+      "defaultValue": "update",
+      "helpMarkDown": "Spec lifecycle policy.",
+      "options": {
+        "update": "Update (overwrite)",
+        "version": "Version (create new)"
+      }
+    },
+    {
+      "name": "folder_strategy",
+      "type": "pickList",
+      "label": "Folder Strategy",
+      "required": false,
+      "defaultValue": "Paths",
+      "helpMarkDown": "Folder organisation strategy for generated collections.",
+      "options": {
+        "Paths": "Paths",
+        "Tags": "Tags"
+      }
+    },
+    {
+      "name": "request_name_source",
+      "type": "pickList",
+      "label": "Request Name Source",
+      "required": false,
+      "defaultValue": "Fallback",
+      "helpMarkDown": "How requests are named in generated collections.",
+      "options": {
+        "Fallback": "Fallback (summary → operationId → URL)",
+        "URL": "URL"
+      }
+    },
+    {
+      "name": "openapi_version",
+      "type": "pickList",
+      "label": "OpenAPI Version",
+      "required": false,
+      "defaultValue": "",
+      "helpMarkDown": "OpenAPI version override. Leave blank for auto-detection.",
+      "options": {
+        "": "Auto-detect",
+        "3.0": "OpenAPI 3.0",
+        "3.1": "OpenAPI 3.1"
+      }
+    },
+    {
+      "name": "integration_backend",
+      "type": "pickList",
+      "label": "Integration Backend",
+      "required": false,
+      "defaultValue": "bifrost",
+      "helpMarkDown": "Integration backend for downstream workspace connectivity.",
+      "options": {
+        "bifrost": "Bifrost"
+      }
+    }
+  ],
+  "outputVariables": [
+    { "name": "workspaceId",            "description": "Postman workspace ID" },
+    { "name": "workspaceUrl",           "description": "Postman workspace URL" },
+    { "name": "workspaceName",          "description": "Postman workspace name" },
+    { "name": "specId",                 "description": "Uploaded Postman spec ID" },
+    { "name": "baselineCollectionId",   "description": "Baseline collection ID" },
+    { "name": "smokeCollectionId",      "description": "Smoke collection ID" },
+    { "name": "contractCollectionId",   "description": "Contract collection ID" },
+    { "name": "collectionsJson",        "description": "JSON summary of generated collections" },
+    { "name": "lintSummaryJson",        "description": "JSON summary of lint errors and warnings" }
+  ],
+  "execution": {
+    "Node20_1": {
+      "target": "ado-index.cjs"
+    }
+  }
+}
