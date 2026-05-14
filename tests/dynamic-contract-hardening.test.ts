@@ -782,6 +782,33 @@ paths:
     expect(matchOperation(ambiguous, { method: 'GET', url: { path: ['pets', '123'] } }).ambiguous?.map((op) => op.id)).toEqual(['GET /pets/{id}', 'GET /pets/{name}']);
   });
 
+  it('prefers exact literal matches over server-prefixed template matches when both have the same segment length', () => {
+    // Regression for CONTRACT_DUPLICATE_OPERATION_REQUEST hit by Fox's spec:
+    // both `/login` and `/otp/login` exist, and the server has a basePath
+    // template, so the contract index produces a `/{serverVariable}/login`
+    // candidate for `POST /login`. A request to `/otp/login` matches both
+    // that template candidate and the literal `/otp/login`; the matcher must
+    // pick the literal one rather than the template (otherwise two distinct
+    // requests both resolve to `POST /login` and bootstrap throws
+    // CONTRACT_DUPLICATE_OPERATION_REQUEST).
+    const index = indexFrom(`openapi: 3.0.3
+info: { title: account, version: '1' }
+servers:
+  - url: 'https://example.com/{basePath}'
+    variables:
+      basePath: { default: account }
+paths:
+  /login:
+    post: { responses: { '200': { description: OK } } }
+  /otp/login:
+    post: { responses: { '200': { description: OK } } }
+`);
+    expect(matchOperation(index, { method: 'POST', url: { path: ['otp', 'login'] } }).operation?.id).toBe('POST /otp/login');
+    expect(matchOperation(index, { method: 'POST', url: { path: ['login'] } }).operation?.id).toBe('POST /login');
+    expect(matchOperation(index, { method: 'POST', url: { path: ['account', 'login'] } }).operation?.id).toBe('POST /login');
+    expect(matchOperation(index, { method: 'POST', url: { path: ['account', 'otp', 'login'] } }).operation?.id).toBe('POST /otp/login');
+  });
+
   it('fails closed for missing eligible operations and warns about callbacks and webhooks', () => {
     expect(() => indexFrom('openapi: 3.1.0\ninfo: { title: T, version: 1 }\npaths: {}\n')).toThrow('CONTRACT_NO_ELIGIBLE_OPERATIONS');
     expect(() => indexFrom(`openapi: 3.1.0
