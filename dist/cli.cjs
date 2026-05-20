@@ -21391,7 +21391,7 @@ var require_identity = __commonJS({
     var NODE_TYPE = /* @__PURE__ */ Symbol.for("yaml.node.type");
     var isAlias = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === ALIAS;
     var isDocument = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === DOC;
-    var isMap = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
+    var isMap2 = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === MAP;
     var isPair = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === PAIR;
     var isScalar = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SCALAR;
     var isSeq = (node) => !!node && typeof node === "object" && node[NODE_TYPE] === SEQ;
@@ -21427,7 +21427,7 @@ var require_identity = __commonJS({
     exports2.isAlias = isAlias;
     exports2.isCollection = isCollection;
     exports2.isDocument = isDocument;
-    exports2.isMap = isMap;
+    exports2.isMap = isMap2;
     exports2.isNode = isNode;
     exports2.isPair = isPair;
     exports2.isScalar = isScalar;
@@ -24746,7 +24746,7 @@ var require_Document = __commonJS({
     var applyReviver = require_applyReviver();
     var createNode = require_createNode();
     var directives = require_directives();
-    var Document = class _Document {
+    var Document2 = class _Document {
       constructor(value, replacer, options) {
         this.commentBefore = null;
         this.comment = null;
@@ -25036,7 +25036,7 @@ var require_Document = __commonJS({
         return true;
       throw new Error("Expected a YAML collection as document contents");
     }
-    exports2.Document = Document;
+    exports2.Document = Document2;
   }
 });
 
@@ -25532,9 +25532,9 @@ var require_resolve_flow_collection = __commonJS({
     var blockMsg = "Block collections are not allowed within flow collections";
     var isBlock = (token) => token && (token.type === "block-map" || token.type === "block-seq");
     function resolveFlowCollection({ composeNode: composeNode2, composeEmptyNode }, ctx, fc, onError, tag) {
-      const isMap = fc.start.source === "{";
-      const fcName = isMap ? "flow map" : "flow sequence";
-      const NodeClass = tag?.nodeClass ?? (isMap ? YAMLMap.YAMLMap : YAMLSeq.YAMLSeq);
+      const isMap2 = fc.start.source === "{";
+      const fcName = isMap2 ? "flow map" : "flow sequence";
+      const NodeClass = tag?.nodeClass ?? (isMap2 ? YAMLMap.YAMLMap : YAMLSeq.YAMLSeq);
       const coll = new NodeClass(ctx.schema);
       coll.flow = true;
       const atRoot = ctx.atRoot;
@@ -25570,7 +25570,7 @@ var require_resolve_flow_collection = __commonJS({
             offset = props.end;
             continue;
           }
-          if (!isMap && ctx.options.strict && utilContainsNewline.containsNewline(key))
+          if (!isMap2 && ctx.options.strict && utilContainsNewline.containsNewline(key))
             onError(
               key,
               // checked by containsNewline()
@@ -25610,7 +25610,7 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap && !sep && !props.found) {
+        if (!isMap2 && !sep && !props.found) {
           const valueNode = value ? composeNode2(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
@@ -25633,7 +25633,7 @@ var require_resolve_flow_collection = __commonJS({
             startOnNewline: false
           });
           if (valueProps.found) {
-            if (!isMap && !props.found && ctx.options.strict) {
+            if (!isMap2 && !props.found && ctx.options.strict) {
               if (sep)
                 for (const st of sep) {
                   if (st === valueProps.found)
@@ -25665,7 +25665,7 @@ var require_resolve_flow_collection = __commonJS({
           const pair = new Pair.Pair(keyNode, valueNode);
           if (ctx.options.keepSourceTokens)
             pair.srcToken = collItem;
-          if (isMap) {
+          if (isMap2) {
             const map2 = coll;
             if (utilMapIncludes.mapIncludes(ctx, map2.items, keyNode))
               onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
@@ -25681,7 +25681,7 @@ var require_resolve_flow_collection = __commonJS({
           offset = valueNode ? valueNode.range[2] : valueProps.end;
         }
       }
-      const expectedEnd = isMap ? "}" : "]";
+      const expectedEnd = isMap2 ? "}" : "]";
       const [ce, ...ee] = fc.end;
       let cePos = offset;
       if (ce?.source === expectedEnd)
@@ -26399,13 +26399,13 @@ var require_compose_node = __commonJS({
 var require_compose_doc = __commonJS({
   "node_modules/yaml/dist/compose/compose-doc.js"(exports2) {
     "use strict";
-    var Document = require_Document();
+    var Document2 = require_Document();
     var composeNode2 = require_compose_node();
     var resolveEnd = require_resolve_end();
     var resolveProps = require_resolve_props();
     function composeDoc(options, directives, { offset, start, value, end }, onError) {
       const opts = Object.assign({ _directives: directives }, options);
-      const doc = new Document.Document(void 0, opts);
+      const doc = new Document2.Document(void 0, opts);
       const ctx = {
         atKey: false,
         atRoot: true,
@@ -26444,7 +26444,7 @@ var require_composer = __commonJS({
     "use strict";
     var node_process = require("process");
     var directives = require_directives();
-    var Document = require_Document();
+    var Document2 = require_Document();
     var errors = require_errors2();
     var identity = require_identity();
     var composeDoc = require_compose_doc();
@@ -26631,7 +26631,7 @@ ${end.comment}` : end.comment;
           this.doc = null;
         } else if (forceDoc) {
           const opts = Object.assign({ _directives: this.directives }, this.options);
-          const doc = new Document.Document(void 0, opts);
+          const doc = new Document2.Document(void 0, opts);
           if (this.atDirectives)
             this.onError(endOffset, "MISSING_CHAR", "Missing directives-end indicator line");
           doc.range = [0, endOffset, endOffset];
@@ -28536,7 +28536,7 @@ var require_public_api = __commonJS({
   "node_modules/yaml/dist/public-api.js"(exports2) {
     "use strict";
     var composer = require_composer();
-    var Document = require_Document();
+    var Document2 = require_Document();
     var errors = require_errors2();
     var log = require_log();
     var identity = require_identity();
@@ -28561,7 +28561,7 @@ var require_public_api = __commonJS({
         return docs;
       return Object.assign([], { empty: true }, composer$1.streamInfo());
     }
-    function parseDocument(source, options = {}) {
+    function parseDocument2(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -28587,7 +28587,7 @@ var require_public_api = __commonJS({
       } else if (options === void 0 && reviver && typeof reviver === "object") {
         options = reviver;
       }
-      const doc = parseDocument(src, options);
+      const doc = parseDocument2(src, options);
       if (!doc)
         return null;
       doc.warnings.forEach((warning) => log.warn(doc.options.logLevel, warning));
@@ -28619,11 +28619,11 @@ var require_public_api = __commonJS({
       }
       if (identity.isDocument(value) && !_replacer)
         return value.toString(options);
-      return new Document.Document(value, _replacer, options).toString(options);
+      return new Document2.Document(value, _replacer, options).toString(options);
     }
     exports2.parse = parse6;
     exports2.parseAllDocuments = parseAllDocuments;
-    exports2.parseDocument = parseDocument;
+    exports2.parseDocument = parseDocument2;
     exports2.stringify = stringify2;
   }
 });
@@ -28633,7 +28633,7 @@ var require_dist = __commonJS({
   "node_modules/yaml/dist/index.js"(exports2) {
     "use strict";
     var composer = require_composer();
-    var Document = require_Document();
+    var Document2 = require_Document();
     var Schema2 = require_Schema();
     var errors = require_errors2();
     var Alias = require_Alias();
@@ -28649,7 +28649,7 @@ var require_dist = __commonJS({
     var publicApi = require_public_api();
     var visit = require_visit();
     exports2.Composer = composer.Composer;
-    exports2.Document = Document.Document;
+    exports2.Document = Document2.Document;
     exports2.Schema = Schema2.Schema;
     exports2.YAMLError = errors.YAMLError;
     exports2.YAMLParseError = errors.YAMLParseError;
@@ -62489,6 +62489,39 @@ function readResourcesState() {
     return null;
   }
 }
+function persistResourcesState(params) {
+  try {
+    let doc;
+    try {
+      doc = (0, import_yaml3.parseDocument)((0, import_node_fs2.readFileSync)(".postman/resources.yaml", "utf8"));
+      if (!(0, import_yaml3.isMap)(doc.contents)) {
+        doc = new import_yaml3.Document({});
+      }
+    } catch {
+      doc = new import_yaml3.Document({});
+    }
+    doc.setIn(["workspace", "id"], params.workspaceId);
+    const collectionEntries = [
+      [`../postman/collections/[Baseline] ${params.projectName}`, params.baselineCollectionId],
+      [`../postman/collections/[Smoke] ${params.projectName}`, params.smokeCollectionId],
+      [`../postman/collections/[Contract] ${params.projectName}`, params.contractCollectionId]
+    ];
+    for (const [path3, id] of collectionEntries) {
+      if (id) {
+        doc.setIn(["cloudResources", "collections", path3], id);
+      }
+    }
+    if (params.specId && params.specPath) {
+      doc.setIn(["cloudResources", "specs", `../${params.specPath}`], params.specId);
+    }
+    (0, import_node_fs2.mkdirSync)(".postman", { recursive: true });
+    (0, import_node_fs2.writeFileSync)(".postman/resources.yaml", doc.toString({ lineWidth: 0 }));
+    params.log.info(`Persisted bootstrap state to .postman/resources.yaml (workspace=${params.workspaceId})`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    params.log.warning(`Failed to persist .postman/resources.yaml: ${reason}`);
+  }
+}
 function getFirstCloudResourceId(map2) {
   if (!map2) {
     return void 0;
@@ -63377,6 +63410,19 @@ For CLI usage, pass --workspace-team-id <id> or export POSTMAN_WORKSPACE_TEAM_ID
     }
     await restorePreviousSpecContent(`${rollbackTriggerStage}: ${reason}`);
     throw error;
+  }
+  if (outputs["workspace-id"]) {
+    const persist = dependencies.persistResources ?? persistResourcesState;
+    persist({
+      workspaceId: outputs["workspace-id"],
+      specId: outputs["spec-id"] || void 0,
+      specPath: inputs.specPath || void 0,
+      baselineCollectionId: outputs["baseline-collection-id"] || void 0,
+      smokeCollectionId: outputs["smoke-collection-id"] || void 0,
+      contractCollectionId: outputs["contract-collection-id"] || void 0,
+      projectName: inputs.projectName,
+      log: dependencies.core
+    });
   }
   for (const [name, value] of Object.entries(outputs)) {
     dependencies.core.setOutput(name, value);

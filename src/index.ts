@@ -2,8 +2,8 @@ import * as core from '@actions/core';
 import * as exec from '@actions/exec';
 import * as io from '@actions/io';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { parse, stringify } from 'yaml';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { Document, isMap, parse, parseDocument, stringify } from 'yaml';
 
 import { openAlphaActionContract } from './contracts.js';
 import { GitHubApiClient } from './lib/github/github-api-client.js';
@@ -149,6 +149,7 @@ export interface BootstrapExecutionDependencies {
   > &
     Partial<Pick<PostmanAssetsClient, 'deleteCollection' | 'getCollection' | 'updateCollection'>>;
   specFetcher: typeof fetch;
+  persistResources?: (params: PersistResourcesParams) => void;
 }
 
 const GOVERNANCE_GROUP_PROPERTY_NAME = 'postman-governance-group';
@@ -691,6 +692,57 @@ function readResourcesState(): PostmanResourcesState | null {
     return parse(readFileSync('.postman/resources.yaml', 'utf8')) as PostmanResourcesState;
   } catch {
     return null;
+  }
+}
+
+export type PersistResourcesParams = {
+  workspaceId: string;
+  specId?: string;
+  specPath?: string;
+  baselineCollectionId?: string;
+  smokeCollectionId?: string;
+  contractCollectionId?: string;
+  projectName: string;
+  log: Pick<CoreLike, 'info' | 'warning'>;
+};
+
+// Targeted Document mutation preserves any comments/formatting in an existing
+// resources.yaml; falls back to a fresh document when no file exists.
+export function persistResourcesState(params: PersistResourcesParams): void {
+  try {
+    let doc: Document;
+    try {
+      doc = parseDocument(readFileSync('.postman/resources.yaml', 'utf8'));
+      if (!isMap(doc.contents)) {
+        doc = new Document({});
+      }
+    } catch {
+      doc = new Document({});
+    }
+
+    doc.setIn(['workspace', 'id'], params.workspaceId);
+
+    const collectionEntries: Array<[string, string | undefined]> = [
+      [`../postman/collections/[Baseline] ${params.projectName}`, params.baselineCollectionId],
+      [`../postman/collections/[Smoke] ${params.projectName}`, params.smokeCollectionId],
+      [`../postman/collections/[Contract] ${params.projectName}`, params.contractCollectionId]
+    ];
+    for (const [path, id] of collectionEntries) {
+      if (id) {
+        doc.setIn(['cloudResources', 'collections', path], id);
+      }
+    }
+
+    if (params.specId && params.specPath) {
+      doc.setIn(['cloudResources', 'specs', `../${params.specPath}`], params.specId);
+    }
+
+    mkdirSync('.postman', { recursive: true });
+    writeFileSync('.postman/resources.yaml', doc.toString({ lineWidth: 0 }));
+    params.log.info(`Persisted bootstrap state to .postman/resources.yaml (workspace=${params.workspaceId})`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    params.log.warning(`Failed to persist .postman/resources.yaml: ${reason}`);
   }
 }
 
@@ -1691,6 +1743,20 @@ export async function runBootstrap(
     }
     await restorePreviousSpecContent(`${rollbackTriggerStage}: ${reason}`);
     throw error;
+  }
+
+  if (outputs['workspace-id']) {
+    const persist = dependencies.persistResources ?? persistResourcesState;
+    persist({
+      workspaceId: outputs['workspace-id'],
+      specId: outputs['spec-id'] || undefined,
+      specPath: inputs.specPath || undefined,
+      baselineCollectionId: outputs['baseline-collection-id'] || undefined,
+      smokeCollectionId: outputs['smoke-collection-id'] || undefined,
+      contractCollectionId: outputs['contract-collection-id'] || undefined,
+      projectName: inputs.projectName,
+      log: dependencies.core
+    });
   }
 
   for (const [name, value] of Object.entries(outputs)) {
