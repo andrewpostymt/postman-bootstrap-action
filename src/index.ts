@@ -125,7 +125,7 @@ export interface ResolvedInputs {
   smokeCollectionId?: string;
   contractCollectionId?: string;
   additionalCollectionsDir?: string;
-  syncGeneratedAssets?: boolean;
+  onboardingScope?: 'full' | 'spec-only';
   syncExamples: boolean;
   collectionSyncMode: 'refresh' | 'version';
   specSyncMode: 'update' | 'version';
@@ -697,10 +697,10 @@ export function resolveInputs(
     smokeCollectionId: getInput('smoke-collection-id', env),
     contractCollectionId: getInput('contract-collection-id', env),
     additionalCollectionsDir: getInput('additional-collections-dir', env),
-    syncGeneratedAssets: parseBooleanInput(
-      'sync-generated-assets',
-      getInput('sync-generated-assets', env),
-      true
+    onboardingScope: parseEnumInput<'full' | 'spec-only'>(
+      'onboarding-scope',
+      getInput('onboarding-scope', env),
+      'full'
     ),
     syncExamples: parseBooleanInput('sync-examples', getInput('sync-examples', env), true),
     collectionSyncMode: parseCollectionSyncMode(getInput('collection-sync-mode', env)),
@@ -1048,9 +1048,9 @@ export function readActionInputs(
     INPUT_SMOKE_COLLECTION_ID: optionalInput(actionCore, 'smoke-collection-id'),
     INPUT_CONTRACT_COLLECTION_ID: optionalInput(actionCore, 'contract-collection-id'),
     INPUT_ADDITIONAL_COLLECTIONS_DIR: optionalInput(actionCore, 'additional-collections-dir'),
-    INPUT_SYNC_GENERATED_ASSETS:
-      optionalInput(actionCore, 'sync-generated-assets') ??
-      bootstrapActionContract.inputs['sync-generated-assets'].default,
+    INPUT_ONBOARDING_SCOPE:
+      optionalInput(actionCore, 'onboarding-scope') ??
+      bootstrapActionContract.inputs['onboarding-scope'].default,
     INPUT_SYNC_EXAMPLES:
       optionalInput(actionCore, 'sync-examples') ??
       bootstrapActionContract.inputs['sync-examples'].default,
@@ -2465,7 +2465,7 @@ async function runBootstrapInner(
     dependencies.core.info(`branch-aware sync: channel asset set "${inputs.projectName}"`);
   }
   const collectionBranchMarker = renderCollectionBranchMarker(branchDecision, inputs.repoUrl);
-  const syncGeneratedAssets = inputs.syncGeneratedAssets !== false;
+  const isFullOnboarding = inputs.onboardingScope !== 'spec-only';
   if (branchDecision.tier !== 'legacy') {
     outputs['sync-status'] = 'synced';
     outputs['branch-decision'] = serializeBranchDecision(branchDecision);
@@ -2478,7 +2478,7 @@ async function runBootstrapInner(
   if (!isCanonicalWriter) {
     const explicitCanonicalIds = [
       ['spec-id', inputs.specId],
-      ...(syncGeneratedAssets
+      ...(isFullOnboarding
         ? [
             ['baseline-collection-id', inputs.baselineCollectionId],
             ['smoke-collection-id', inputs.smokeCollectionId],
@@ -2495,7 +2495,7 @@ async function runBootstrapInner(
 
   const requiresReleaseLabel =
     inputs.specSyncMode === 'version' ||
-    (syncGeneratedAssets && inputs.collectionSyncMode === 'version');
+    (isFullOnboarding && inputs.collectionSyncMode === 'version');
   const releaseLabel = requiresReleaseLabel ? deriveReleaseLabel(inputs) : undefined;
   if (requiresReleaseLabel && !releaseLabel) {
     throw new Error(
@@ -2591,9 +2591,9 @@ async function runBootstrapInner(
         ? definitionFormatToSpecType(sourceDefinitionBundle.format)
         : detectSpecType(rawSpecContent, specSourceName);
   if (resolvedSpecType !== 'openapi') {
-    if (!syncGeneratedAssets) {
+    if (!isFullOnboarding) {
       throw new Error(
-        `sync-generated-assets=false currently supports OpenAPI specifications only; detected ${resolvedSpecType}`
+        `onboarding-scope=spec-only currently supports OpenAPI specifications only; detected ${resolvedSpecType}`
       );
     }
     dependencies.core.info(`Detected ${resolvedSpecType} spec; using multi-protocol contract path`);
@@ -2632,7 +2632,7 @@ async function runBootstrapInner(
       ? { workspace: workspaceScopedTrackedState.workspace }
       : null;
   const writableResourcesState: PostmanResourcesState = resourcesState ?? {};
-  const additionalCollections = syncGeneratedAssets
+  const additionalCollections = isFullOnboarding
     ? loadAdditionalCollectionFiles(inputs.additionalCollectionsDir, resourcesState)
     : [];
   let specId = resolveSpecIdFromResourcesState(inputs, resourcesState, releaseLabel);
@@ -2830,12 +2830,12 @@ async function runBootstrapInner(
     releaseLabel
   );
 
-  let baselineCollectionId = syncGeneratedAssets ? inputs.baselineCollectionId : undefined;
-  let smokeCollectionId = syncGeneratedAssets ? inputs.smokeCollectionId : undefined;
-  let contractCollectionId = syncGeneratedAssets ? inputs.contractCollectionId : undefined;
+  let baselineCollectionId = isFullOnboarding ? inputs.baselineCollectionId : undefined;
+  let smokeCollectionId = isFullOnboarding ? inputs.smokeCollectionId : undefined;
+  let contractCollectionId = isFullOnboarding ? inputs.contractCollectionId : undefined;
 
   const cloudCollections = resourcesState?.cloudResources?.collections;
-  if (syncGeneratedAssets && !baselineCollectionId) {
+  if (isFullOnboarding && !baselineCollectionId) {
     baselineCollectionId = findCloudResourceId(
       cloudCollections,
       (filePath) => matchesBaselineCollectionResource(filePath, artifactProjectName)
@@ -2844,7 +2844,7 @@ async function runBootstrapInner(
       dependencies.core.info('Resolved baseline-collection-id from .postman/resources.yaml');
     }
   }
-  if (syncGeneratedAssets && !smokeCollectionId) {
+  if (isFullOnboarding && !smokeCollectionId) {
     smokeCollectionId = findCloudResourceId(
       cloudCollections,
       (filePath) => matchesPrefixedCollectionResource(
@@ -2857,7 +2857,7 @@ async function runBootstrapInner(
       dependencies.core.info('Resolved smoke-collection-id from .postman/resources.yaml');
     }
   }
-  if (syncGeneratedAssets && !contractCollectionId) {
+  if (isFullOnboarding && !contractCollectionId) {
     contractCollectionId = findCloudResourceId(
       cloudCollections,
       (filePath) => matchesPrefixedCollectionResource(
@@ -3197,7 +3197,7 @@ async function runBootstrapInner(
       }
     | undefined;
   void openApiOperationLedger;
-  if (!syncGeneratedAssets) {
+  if (!isFullOnboarding) {
     outputs['baseline-collection-id'] = '';
     outputs['smoke-collection-id'] = '';
     outputs['contract-collection-id'] = '';

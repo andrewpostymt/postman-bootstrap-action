@@ -47,11 +47,11 @@ export const bootstrapActionContract: ActionContract = {
       description: 'Workspace-relative directory containing curated Postman v2.1 JSON/YAML files or canonical HTTP collection v3 Local View directories to create or update.',
       required: false
     },
-    'sync-generated-assets': {
-      description: 'Whether to create or update generated collections and curated collection assets. Set false for OpenAPI workspace/spec-only onboarding; existing generated assets are left unchanged.',
+    'onboarding-scope': {
+      description: 'Onboarding resources to manage. Use full for workspace, spec, and collection assets, or spec-only for workspace/spec onboarding while leaving existing generated assets unchanged.',
       required: false,
-      default: 'true',
-      allowedValues: ['true', 'false']
+      default: 'full',
+      allowedValues: ['full', 'spec-only']
     },
     'sync-examples': {
       description: 'Whether linked spec/collection relations should enable example syncing.',

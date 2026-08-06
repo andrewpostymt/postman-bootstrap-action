@@ -795,7 +795,7 @@ describe('bootstrap action', () => {
         baselineCollectionId: 'col-baseline-existing',
         contractCollectionId: 'col-contract-existing',
         smokeCollectionId: 'col-smoke-existing',
-        syncGeneratedAssets: false
+        onboardingScope: 'spec-only'
       },
       internalIntegration
     });
@@ -851,7 +851,7 @@ describe('bootstrap action', () => {
       inputs: {
         workspaceId: 'ws-target',
         specId: undefined,
-        syncGeneratedAssets: false
+        onboardingScope: 'spec-only'
       },
       resourcesState: {
         read: () => trackedState,
@@ -911,7 +911,7 @@ describe('bootstrap action', () => {
       inputs: {
         workspaceId: undefined,
         specId: undefined,
-        syncGeneratedAssets: false
+        onboardingScope: 'spec-only'
       },
       internalIntegration: createRollbackIntegration({ findWorkspaceForRepo }),
       resourcesState: {
@@ -967,7 +967,7 @@ describe('bootstrap action', () => {
       inputs: {
         workspaceId: 'ws-target',
         specId: undefined,
-        syncGeneratedAssets: false
+        onboardingScope: 'spec-only'
       },
       resourcesState: {
         read: () => trackedState,
