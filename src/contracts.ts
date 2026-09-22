@@ -69,8 +69,8 @@ export const openAlphaActionContract: BetaActionContract = {
       required: false
     },
     'project-name': {
-      description: 'Service project name.',
-      required: true
+      description: 'Service project name. Defaults to OpenAPI info.title.',
+      required: false
     },
     domain: {
       description: 'Business domain for the service.',

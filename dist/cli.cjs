@@ -46970,8 +46970,8 @@ var openAlphaActionContract = {
       required: false
     },
     "project-name": {
-      description: "Service project name.",
-      required: true
+      description: "Service project name. Defaults to OpenAPI info.title.",
+      required: false
     },
     domain: {
       description: "Business domain for the service.",
@@ -62222,7 +62222,7 @@ function resolveInputs(env = process.env) {
   const postmanStack = parsePostmanStack(getInput("postman-stack", env));
   const endpointProfile = resolvePostmanEndpointProfile(postmanStack);
   return {
-    projectName: getInput("project-name", env) ?? env.GITHUB_REPOSITORY?.split("/").pop() ?? env.CI_PROJECT_NAME ?? "",
+    projectName: getInput("project-name", env) ?? "",
     workspaceId: getInput("workspace-id", env),
     specId: getInput("spec-id", env),
     baselineCollectionId: getInput("baseline-collection-id", env),
@@ -62288,7 +62288,7 @@ function createPlannedOutputs(inputs) {
   };
 }
 function readActionInputs(actionCore) {
-  const projectName = requireInput(actionCore, "project-name");
+  const projectName = optionalInput(actionCore, "project-name") ?? "";
   const specUrl = optionalInput(actionCore, "spec-url") ?? "";
   const specPath = optionalInput(actionCore, "spec-path") ?? "";
   if (!specUrl && !specPath) {
@@ -62638,7 +62638,6 @@ function normalizeSpecDocument(raw, warn) {
 `;
 }
 async function runBootstrap(inputs, dependencies) {
-  const outputs = createPlannedOutputs(inputs);
   const requiresReleaseLabel = inputs.collectionSyncMode === "version" || inputs.specSyncMode === "version";
   const releaseLabel = requiresReleaseLabel ? deriveReleaseLabel(inputs) : void 0;
   if (requiresReleaseLabel && !releaseLabel) {
@@ -62646,11 +62645,6 @@ async function runBootstrap(inputs, dependencies) {
       "Versioned spec or collection sync requires a release-label or derivable GitHub ref metadata"
     );
   }
-  const workspaceName = createWorkspaceName(inputs);
-  const aboutText = `Auto-provisioned by Postman CS open-alpha for ${inputs.projectName}`;
-  await runGroup(dependencies.core, "Install Postman CLI", async () => {
-    await ensurePostmanCli(dependencies, inputs.postmanApiKey, inputs.postmanCliInstallUrl);
-  });
   const resourcesState = readResourcesState();
   let specId = inputs.specId;
   if (!specId) {
@@ -62711,6 +62705,20 @@ async function runBootstrap(inputs, dependencies) {
       return document;
     }
   );
+  if (!inputs.projectName) {
+    const info = parseOpenApiDocument(specContent).info;
+    const title = info && typeof info === "object" && !Array.isArray(info) ? info.title : void 0;
+    if (typeof title !== "string" || !title.trim()) {
+      throw new Error("OpenAPI info.title is required when project-name is omitted");
+    }
+    inputs.projectName = title;
+  }
+  const outputs = createPlannedOutputs(inputs);
+  const workspaceName = createWorkspaceName(inputs);
+  const aboutText = `Auto-provisioned by Postman CS open-alpha for ${inputs.projectName}`;
+  await runGroup(dependencies.core, "Install Postman CLI", async () => {
+    await ensurePostmanCli(dependencies, inputs.postmanApiKey, inputs.postmanCliInstallUrl);
+  });
   let explicitWorkspaceId = inputs.workspaceId;
   if (!explicitWorkspaceId && resourcesState?.workspace?.id) {
     explicitWorkspaceId = resourcesState.workspace.id;
@@ -63747,7 +63755,6 @@ function requireCliInput(name, value) {
   }
 }
 function validateCliInputs(inputs) {
-  requireCliInput("project-name", inputs.projectName);
   if (!inputs.specUrl && !inputs.specPath) {
     throw new Error("One of spec-url or spec-path is required");
   }

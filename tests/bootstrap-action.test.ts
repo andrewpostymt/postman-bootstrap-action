@@ -120,6 +120,10 @@ function createInputs(overrides: Partial<ResolvedInputs> = {}): ResolvedInputs {
   };
 }
 
+afterEach(() => {
+  rmSync('.postman', { recursive: true, force: true });
+});
+
 function createExecStub(stdout = '{"violations":[]}'): ExecLike {
   return {
     exec: vi.fn().mockResolvedValue(0),
@@ -260,10 +264,6 @@ async function runExistingSpecBootstrap(
 }
 
 describe('bootstrap action', () => {
-  afterEach(() => {
-    rmSync('.postman', { recursive: true, force: true });
-  });
-
   it('marks secrets as early as input resolution', () => {
     const { core, secrets } = createCoreStub({
       'project-name': 'core-payments',
@@ -308,6 +308,15 @@ describe('bootstrap action', () => {
       'postman-api-key': 'pmak-test'
     });
     expect(() => readActionInputs(both.core)).toThrow(/not both/);
+  });
+
+  it('fails before Postman mutation when neither project-name nor OpenAPI title exists', async () => {
+    const postman = createRollbackPostman();
+    await expect(runBootstrap(createInputs({ projectName: '' }), {
+      core: createCoreStub().core, exec: createExecStub(), io: createIoStub(), postman: withContractHelpers(postman),
+      specFetcher: vi.fn<typeof fetch>().mockResolvedValue(new Response(VALID_SPEC_31.replace('"title": "Test API",', ''), { status: 200 }))
+    })).rejects.toThrow(/title/i);
+    expect(postman.createWorkspace).not.toHaveBeenCalled();
   });
 
   it('runs the bootstrap flow end to end and emits outputs', async () => {
@@ -499,7 +508,7 @@ paths:
       return new Response(href.includes('components.yaml') ? componentsSpec : rootSpec, { status: 200 });
     });
 
-    await runBootstrap(createInputs(), {
+    const result = await runBootstrap(createInputs({ projectName: '' }), {
       core,
       exec: execStub,
       io: createIoStub(),
@@ -508,6 +517,7 @@ paths:
     });
 
     const uploadedContent = vi.mocked(postman.uploadSpec).mock.calls[0]?.[2] as string;
+    expect(result['workspace-name']).toBe('[AF] Test API');
     expect(uploadedContent).not.toContain('components.yaml');
     const uploaded = JSON.parse(uploadedContent) as {
       paths: Record<string, { get: { responses: Record<string, { description?: string }> } }>;

@@ -318,7 +318,6 @@ function requireCliInput(name: string, value: string | undefined): void {
 }
 
 function validateCliInputs(inputs: ResolvedInputs): void {
-  requireCliInput('project-name', inputs.projectName);
   if (!inputs.specUrl && !inputs.specPath) {
     throw new Error('One of spec-url or spec-path is required');
   }

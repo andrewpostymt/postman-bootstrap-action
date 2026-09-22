@@ -337,7 +337,7 @@ steps:
 | `collection-sync-mode` | `refresh` | Collection lifecycle policy. `refresh` keeps the tracked collection IDs while updating them from the latest spec, and `version` creates or reuses release-scoped collections. |
 | `spec-sync-mode` | `update` | Spec lifecycle policy. `update` keeps one canonical spec current in Spec Hub, while `version` creates or reuses a release-scoped spec asset. |
 | `release-label` | | Optional release label used for versioned specs and collections. When omitted for versioned sync, the action derives one from GitHub tag or branch metadata. |
-| `project-name` | | Service name used in workspace and asset naming. |
+| `project-name` | | Service name used in workspace and asset naming. Defaults to `info.title` from the resolved OpenAPI document. |
 | `domain` | | Business domain metadata. Also used by the legacy `governance-mapping-json` fallback. |
 | `domain-code` | | Short prefix used when constructing the workspace name. |
 | `requester-email` | | Optional user invited into the workspace. |

@@ -289,31 +289,19 @@ describe('runCli', () => {
     stderrSpy.mockRestore();
   });
 
-  it('fails missing required CLI inputs before bootstrap side effects or output artifacts', async () => {
+  it('allows project-name to be resolved from the OpenAPI during bootstrap', async () => {
     const dir = await makeTempDir('postman-bootstrap-required-');
-    const executeBootstrap = vi.fn();
-
-    await withCwd(dir, async () => {
-      await expect(
-        runCli([
-          '--spec-url',
-          'https://example.test/openapi.yaml',
-          '--postman-api-key',
-          'test-api-key',
-          '--result-json',
-          'result.json',
-          '--dotenv-path',
-          'result.env'
-        ], {
-          env: {},
-          executeBootstrap
-        })
-      ).rejects.toThrow(/project-name is required/);
+    const executeBootstrap = vi.fn().mockResolvedValue({
+      'workspace-id': '', 'workspace-url': '', 'workspace-name': '', 'spec-id': '',
+      'baseline-collection-id': '', 'smoke-collection-id': '', 'contract-collection-id': '',
+      'collections-json': '{}', 'lint-summary-json': '{}'
     });
 
-    expect(executeBootstrap).not.toHaveBeenCalled();
-    await expect(readFile(path.join(dir, 'result.json'), 'utf8')).rejects.toThrow();
-    await expect(readFile(path.join(dir, 'result.env'), 'utf8')).rejects.toThrow();
+    await withCwd(dir, async () => {
+      await runCli(['--spec-url', 'https://example.test/openapi.yaml', '--postman-api-key', 'test-api-key', '--result-json', 'result.json', '--dotenv-path', 'result.env'], { env: {}, executeBootstrap });
+    });
+
+    expect(executeBootstrap).toHaveBeenCalledOnce();
   });
 
   it('fails invalid CLI inputs before bootstrap side effects or output artifacts', async () => {
